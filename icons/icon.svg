@@ -1,0 +1,23 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1890ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#40a9ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="64" cy="64" r="60" fill="url(#gradient)" stroke="#fff" stroke-width="4"/>
+  
+  <!-- 517 文字 -->
+  <text x="64" y="45" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="white" text-anchor="middle">517</text>
+  
+  <!-- 工具图标 -->
+  <g transform="translate(64, 75)">
+    <!-- 扳手 -->
+    <path d="M-15,-5 L-8,-5 L-8,0 L8,0 L8,-5 L15,-5 L15,5 L8,5 L8,10 L-8,10 L-8,5 L-15,5 Z" fill="white" opacity="0.9"/>
+    <!-- 螺丝刀 -->
+    <rect x="-2" y="-15" width="4" height="20" fill="white" opacity="0.8"/>
+    <rect x="-4" y="-18" width="8" height="3" fill="white" opacity="0.8"/>
+  </g>
+</svg> 

@@ -1,0 +1,32 @@
+{
+  "name": "tool517-vue-extension",
+  "version": "1.0.0",
+  "description": "517工具浏览器扩展 - Vue版本",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:check": "vue-tsc --noEmit && vite build",
+    "build:dev": "vite build --mode development", 
+    "build:extension": "vite build --mode extension",
+    "preview": "vite preview",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.4.0",
+    "@vueuse/core": "^10.0.0",
+    "pinia": "^2.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@types/chrome": "^0.0.254",
+    "vite": "^5.0.0",
+    "vite-plugin-web-extension": "^4.1.0",
+    "typescript": "^5.2.0",
+    "vue-tsc": "^2.0.0"
+  },
+  "volta": {
+    "node": "18.18.0",
+    "pnpm": "8.15.0"
+  }
+} 
