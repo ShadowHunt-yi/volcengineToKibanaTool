@@ -31,9 +31,6 @@
             {{ index.displayText }}
           </option>
         </select>
-        <div class="hint">
-          按住 Ctrl (Windows) 或 Cmd (Mac) 可多选索引
-        </div>
       </div>
       
       <!-- 按钮组 -->
@@ -118,7 +115,53 @@ const jumpToKibana = () => {
   }
 }
 
-// 生成Kibana URL
+// RISON编码器（完全按照非Vue版本实现）
+const risonEncode = (obj: any): string => {
+  if (obj === null || obj === undefined) return '!n'
+  if (obj === true) return '!t'
+  if (obj === false) return '!f'
+  if (typeof obj === 'number') {
+    if (isNaN(obj) || !isFinite(obj)) return '!n'
+    return String(obj)
+  }
+  if (typeof obj === 'string') {
+    if (obj === '') return "''"
+    if (obj.startsWith('now') || obj === 'appState' || obj === 'phrase' || obj === 'kuery' || obj === 'auto' || obj === 'desc') {
+      return obj
+    }
+    if (/^[A-Za-z_$][A-Za-z0-9_$\-@]*$/.test(obj)) {
+      return obj
+    }
+    return "'" + obj.replace(/[!']/g, '!$&') + "'"
+  }
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return '!()'
+    return '!(' + obj.map(item => risonEncode(item)).join(',') + ')'
+  }
+  if (typeof obj === 'object') {
+    const keys = Object.keys(obj)
+    if (keys.length === 0) return '()'
+    
+    const pairs = keys.map(key => {
+      let encodedKey = key
+      if (key === '$state') {
+        encodedKey = "'$state'"
+      } else if (key === '@timestamp') {
+        encodedKey = "'@timestamp'"
+      } else if (/^[A-Za-z_$][A-Za-z0-9_$\-]*$/.test(key)) {
+        encodedKey = key
+      } else {
+        encodedKey = "'" + key.replace(/[!']/g, '!$&') + "'"
+      }
+      return encodedKey + ':' + risonEncode(obj[key])
+    })
+    
+    return '(' + pairs.join(',') + ')'
+  }
+  return '!n'
+}
+
+// 生成Kibana URL（完全按照非Vue版本的逻辑）
 const generateKibanaUrl = (): string => {
   if (!props.sessionInfo) {
     throw new Error('缺少会话信息')
@@ -127,8 +170,6 @@ const generateKibanaUrl = (): string => {
   if (selectedIndexes.value.length === 0) {
     throw new Error('请选择至少一个索引')
   }
-  
-  const baseUrl = 'https://pallognew.517la.com/s/517na/app/kibana#/discover'
   
   // 获取选中索引的ID
   const selectedIndexIds = selectedIndexes.value
@@ -139,23 +180,87 @@ const generateKibanaUrl = (): string => {
     throw new Error('选中的索引无效')
   }
   
-  // 构建查询参数
-  const indexPattern = selectedIndexIds.join(',')
+  // 使用第一个索引
+  const indexId = selectedIndexIds[0]
   
-  // 构建过滤条件
+  // 构建filters（完全按照非Vue版本）
   const filters = [
-    `origin:"${props.sessionInfo.sessionId}"`,
-    `staffID:"${props.sessionInfo.userId}"`
+    {
+      meta: {
+        alias: null,
+        disabled: false,
+        key: "origin",
+        negate: false,
+        params: { query: props.sessionInfo.sessionId },
+        type: "phrase"
+      },
+      query: { match_phrase: { origin: props.sessionInfo.sessionId } },
+      "$state": { store: "appState" }
+    },
+    {
+      meta: {
+        alias: null,
+        disabled: false,
+        key: "staffID", 
+        negate: false,
+        params: { query: props.sessionInfo.userId },
+        type: "phrase"
+      },
+      query: { match_phrase: { staffID: props.sessionInfo.userId } },
+      "$state": { store: "appState" }
+    }
   ]
   
-  // 时间范围
-  const timeRange = props.sessionInfo.time 
-    ? `now-1h,now+1h` // 简化时间范围，实际应该根据具体时间计算
-    : 'now-4h,now'
+  // 时间配置（按照非Vue版本的逻辑）
+  let timeConfig
+  if (props.sessionInfo.time) {
+    try {
+      const sessionTime = new Date(props.sessionInfo.time)
+      if (!isNaN(sessionTime.getTime())) {
+        // 使用1小时范围（前后各1小时）
+        const timeRange = 1
+        const startTime = new Date(sessionTime.getTime() - timeRange * 60 * 60 * 1000)
+        const endTime = new Date(sessionTime.getTime() + timeRange * 60 * 60 * 1000)
+        
+        timeConfig = {
+          refreshInterval: { pause: true, value: 0 },
+          time: { 
+            from: startTime.toISOString(), 
+            to: endTime.toISOString() 
+          }
+        }
+      } else {
+        throw new Error('Invalid date')
+      }
+    } catch (error) {
+      // 如果时间解析失败，使用默认时间范围
+      timeConfig = {
+        refreshInterval: { pause: true, value: 0 },
+        time: { from: "now-4h", to: "now" }
+      }
+    }
+  } else {
+    // 没有时间信息时使用默认时间范围
+    timeConfig = {
+      refreshInterval: { pause: true, value: 0 },
+      time: { from: "now-4h", to: "now" }
+    }
+  }
   
-  const query = encodeURIComponent(filters.join(' AND '))
+  const appConfig = {
+    columns: ["_source"],
+    index: indexId,
+    interval: "auto",
+    query: { language: "kuery", query: "" },
+    filters: filters,
+    sort: [["@timestamp", "desc"]]
+  }
   
-  return `${baseUrl}?_g=(time:(from:'${timeRange}'))&_a=(index:'${indexPattern}',query:(query_string:(query:'${query}')))`
+  // 使用正确的RISON编码
+  const encodedTimeConfig = risonEncode(timeConfig)
+  const encodedAppConfig = risonEncode(appConfig)
+  
+  return `https://pallognew.517la.com/s/517na/app/kibana#/discover?_g=${encodedTimeConfig}&_a=${encodedAppConfig}`
 }
 </script>
 

@@ -12,10 +12,10 @@ export default defineConfig({
       browser: 'chrome',
       manifest: './src/manifest.json',
       watchFilePaths: ['src/**/*'],
-      additionalInputs: [
-        'src/content/inject.ts',
-        'src/pages/JsonFormatter.html'
-      ]
+              additionalInputs: [
+          'src/content/inject.ts',
+          'src/pages/JsonFormatter.html'
+        ]
     }),
     // 自定义插件：复制图标文件、修复manifest.json和重命名下划线文件
     {

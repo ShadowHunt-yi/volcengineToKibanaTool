@@ -1,5 +1,8 @@
 // 517工具 - 内容脚本 (Vue TypeScript 版本)
 import type { SessionInfo, AppInfo } from '@/types'
+import { createApp, h } from 'vue'
+import { createPinia } from 'pinia'
+import IndexSelectModal from '@/components/IndexSelectModal.vue'
 
 // 检查是否在目标网站
 if (window.location.hostname === "console.volcengine.com") {
@@ -16,23 +19,89 @@ if (window.location.hostname === "console.volcengine.com") {
   injectScript.onload = function() { (this as HTMLElement).remove() }
   ;(document.head || document.documentElement).appendChild(injectScript)
   
-  // 会话信息提取函数（支持两种调用方式）
+  // 会话信息提取函数（参照非Vue版本的DOM结构提取方式，包含时间提取）
   function extractSessionInfo(element: Element, specItems?: Element): SessionInfo | null {
     try {
-      // 如果提供了specItems，从specItems中提取
-      const targetElement = specItems || element
-      const text = targetElement.textContent || ''
+      const info: { sessionId: string, userId: string, time?: string } = { sessionId: '', userId: '' }
       
-      // 查找session_id
-      const sessionMatch = text.match(/session[_\s]*id[:\s]*([a-zA-Z0-9\-_]+)/i)
-      const sessionId = sessionMatch ? sessionMatch[1] : ''
+      // 优先使用specItems进行结构化提取（参照非Vue版本）
+      if (specItems) {
+        const items = specItems.querySelectorAll('.item')
+        items.forEach(item => {
+          const label = item.querySelector('.label')?.textContent?.trim()
+          const value = item.querySelector('.value')?.textContent?.trim()
+          
+          if (label === 'session_id' && value) info.sessionId = value
+          if (label === 'user_id' && value) info.userId = value
+        })
+      }
       
-      // 查找user_id  
-      const userMatch = text.match(/user[_\s]*id[:\s]*([a-zA-Z0-9\-_]+)/i)
-      const userId = userMatch ? userMatch[1] : ''
+      // 如果结构化提取失败，回退到正则表达式（改进版）
+      if (!info.sessionId || !info.userId) {
+        const targetElement = specItems || element
+        const text = targetElement.textContent || ''
+        
+        // 改进的正则表达式，限制匹配长度，避免过度贪婪匹配
+        if (!info.sessionId) {
+          const sessionMatch = text.match(/session[_\s]*id[:\s]*([a-zA-Z0-9\-_]{8,64})/i)
+          if (sessionMatch) info.sessionId = sessionMatch[1]
+        }
+        
+        if (!info.userId) {
+          const userMatch = text.match(/user[_\s]*id[:\s]*([a-zA-Z0-9\-_]{8,64})/i)
+          if (userMatch) info.userId = userMatch[1]
+        }
+      }
       
-      if (sessionId && userId) {
-        return { sessionId, userId }
+      // 获取时间信息 - 多种方式尝试（完全按照非Vue版本）
+      let timeValue: string | null = null
+      
+      // 方式1: 从SESSION标签获取
+      const sessionTag = document.querySelector('.DetailHeader__LabelValueTag-cTgEKZ.gZzsWB.session .value')
+      if (sessionTag) {
+        timeValue = sessionTag.textContent?.trim() || null
+      }
+      
+      // 方式2: 从详情面板的第一个时间元素获取
+      if (!timeValue && element) {
+        const timeElement = element.querySelector('.item .value')
+        if (timeElement) {
+          const potentialTime = timeElement.textContent?.trim()
+          // 简单验证是否是时间格式 (包含日期和时间)
+          if (potentialTime && (potentialTime.includes('-') || potentialTime.includes('/')) && potentialTime.includes(':')) {
+            timeValue = potentialTime
+          }
+        }
+      }
+      
+      // 方式3: 从default-items中查找时间
+      if (!timeValue) {
+        const defaultItems = document.querySelector('.DetailItems__Root-frzUaJ.jYzHps.default-items')
+        if (defaultItems) {
+          const timeItems = defaultItems.querySelectorAll('.item .value')
+          for (const item of timeItems) {
+            const text = item.textContent?.trim()
+            if (text && (text.includes('-') || text.includes('/')) && text.includes(':')) {
+              timeValue = text
+              break
+            }
+          }
+        }
+      }
+      
+      info.time = timeValue || undefined
+      
+      if (info.sessionId && info.userId) {
+        console.log('517工具 - 提取到的会话信息:', { 
+          sessionId: info.sessionId, 
+          userId: info.userId, 
+          time: info.time 
+        })
+        return { 
+          sessionId: info.sessionId, 
+          userId: info.userId, 
+          time: info.time 
+        }
       }
     } catch (error) {
       console.error('517工具 - 提取会话信息出错:', error)
@@ -99,7 +168,7 @@ if (window.location.hostname === "console.volcengine.com") {
 
 
 
-  // 创建模态框
+  // 创建索引选择模态框（使用Vue h函数和IndexSelectModal组件）
   async function createIndexSelectionModal(sessionInfo: SessionInfo) {
     console.log('517工具 - 创建模态框:', sessionInfo)
     
@@ -119,138 +188,96 @@ if (window.location.hostname === "console.volcengine.com") {
       existingModal.remove()
     }
 
-    // 创建模态框
-    const modal = document.createElement('div')
-    modal.className = 'tool517-modal'
-    modal.innerHTML = `
-      <div style="
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-      ">
-        <div style="
-          background: white;
-          border-radius: 8px;
-          padding: 24px;
-          min-width: 400px;
-          max-width: 500px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        ">
-          <h3 style="margin: 0 0 16px 0; color: #333; font-size: 18px;">跳转到后端日志</h3>
-          
-          <div style="margin-bottom: 16px;">
-            <div style="color: #666; font-size: 14px; margin-bottom: 8px;">会话信息:</div>
-            <div style="background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 13px;">
-              • session_id: <strong>${sessionInfo.sessionId}</strong><br>
-              • user_id: <strong>${sessionInfo.userId}</strong><br>
-              • 当前应用: <strong>${currentAppInfo?.name || '未检测到'}</strong>
-            </div>
-          </div>
-          
-          <div style="margin-bottom: 20px;">
-            <label style="display: block; color: #666; font-size: 14px; margin-bottom: 8px;">选择索引:</label>
-            <select id="indexSelect" style="
-              width: 100%;
-              padding: 8px;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              font-size: 14px;
-            ">
-              <option value="hotel">Hotel索引 (clyh-hotel-*)</option>
-              <option value="jp">JP索引 (clyh-jp-*)</option>
-              <option value="middle" selected>Middle索引 (clyh-middle-*)</option>
-              <option value="train">Train索引 (clyh-train-*)</option>
-              <option value="gateway">Gateway索引 (gateway-*)</option>
-              <option value="nginx">Nginx索引 (nginx*)</option>
-            </select>
-          </div>
-          
-          <div style="display: flex; gap: 12px; justify-content: flex-end;">
-            <button id="cancelBtn" style="
-              padding: 8px 16px;
-              border: 1px solid #ddd;
-              background: white;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 14px;
-            ">取消</button>
-            <button id="jumpBtn" style="
-              padding: 8px 16px;
-              border: none;
-              background: #1890ff;
-              color: white;
-              border-radius: 4px;
-              cursor: pointer;
-              font-size: 14px;
-            ">跳转</button>
-          </div>
-        </div>
-      </div>
+    // 创建模态框容器
+    const modalContainer = document.createElement('div')
+    modalContainer.className = 'tool517-modal'
+    modalContainer.id = 'tool517-modal-container'
+    
+    // 添加基础样式，确保模态框在最上层
+    modalContainer.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10000;
+      pointer-events: auto;
     `
     
-    document.body.appendChild(modal)
+    document.body.appendChild(modalContainer)
     
-    // 设置默认索引
-    const select = modal.querySelector('#indexSelect') as HTMLSelectElement
-    if (currentAppInfo?.name) {
-      const appName = currentAppInfo.name
-      if (/酒店|hotel/i.test(appName)) {
-        select.value = 'hotel'
-      } else if (/机票|flight|jp/i.test(appName)) {
-        select.value = 'jp'
-      } else if (/火车|train/i.test(appName)) {
-        select.value = 'train'
+    // 创建Pinia实例
+    const pinia = createPinia()
+    
+    // 准备可用索引数据
+    const availableIndexes = getAvailableIndexes()
+    
+    // 使用h函数创建Vue应用
+    const app = createApp({
+      render() {
+        return h(IndexSelectModal, {
+          visible: true,
+          sessionInfo: sessionInfo,
+          availableIndexes: availableIndexes,
+          currentAppName: currentAppInfo?.name || '未检测到',
+          defaultIndexKey: getDefaultIndexForApp(currentAppInfo?.name || ''),
+          onClose: () => {
+            console.log('517工具 - 关闭模态框')
+            app.unmount()
+            modalContainer.remove()
+          },
+          onJump: (url: string) => {
+            console.log('517工具 - 跳转URL:', url)
+            window.open(url, '_blank')
+            app.unmount()
+            modalContainer.remove()
+          },
+          onCopy: (text: string) => {
+            console.log('517工具 - 复制文本')
+            navigator.clipboard.writeText(text).then(() => {
+              alert('已复制到剪贴板！')
+              app.unmount()
+              modalContainer.remove()
+            }).catch(() => {
+              prompt('请手动复制:', text)
+            })
+          }
+        })
       }
-    }
-    
-    // 绑定事件
-    const cancelBtn = modal.querySelector('#cancelBtn')
-    const jumpBtn = modal.querySelector('#jumpBtn')
-    
-    const closeModal = () => modal.remove()
-    
-    cancelBtn?.addEventListener('click', closeModal)
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal()
     })
     
-    jumpBtn?.addEventListener('click', () => {
-      const selectedIndex = select.value
-      const url = generateKibanaUrl(sessionInfo, selectedIndex)
-      window.open(url, '_blank')
-      closeModal()
-    })
+    // 使用Pinia
+    app.use(pinia)
+    
+    // 挂载到容器
+    app.mount(modalContainer)
   }
-
-  // 生成Kibana URL
-  function generateKibanaUrl(sessionInfo: SessionInfo, indexKey: string): string {
-    const indexIds: Record<string, string> = {
-      hotel: "12f35f00-04e7-11ee-8cc6-c323e0969251",
-      jp: "4be5d210-a8e3-11ef-8767-8dbabe23815c",
-      middle: "00db24f0-0f56-11ee-8720-5bf2036a9e1a",
-      train: "68deb330-aab2-11ee-9729-87586cd9b207",
-      gateway: "acb91290-eba6-11ea-9f34-0d8763467285",
-      nginx: "4d2fda50-df0e-11eb-bea5-cb68c938a0cc"
-    }
-
-    const indexId = indexIds[indexKey] || indexIds.middle
-    const baseUrl = 'https://pallognew.517la.com/s/517na/app/kibana#/discover'
-    const filters = [
-      `origin:"${sessionInfo.sessionId}"`,
-      `staffID:"${sessionInfo.userId}"`
+  
+  // 获取可用索引（符合AvailableIndex接口）
+  function getAvailableIndexes() {
+    return [
+      { key: 'hotel', id: '12f35f00-04e7-11ee-8cc6-c323e0969251', name: 'Hotel索引', description: 'clyh-hotel-*', displayText: 'Hotel索引 (clyh-hotel-*)' },
+      { key: 'jp', id: '4be5d210-a8e3-11ef-8767-8dbabe23815c', name: 'JP索引', description: 'clyh-jp-*', displayText: 'JP索引 (clyh-jp-*)' },
+      { key: 'middle', id: '00db24f0-0f56-11ee-8720-5bf2036a9e1a', name: 'Middle索引', description: 'clyh-middle-*', displayText: 'Middle索引 (clyh-middle-*)' },
+      { key: 'train', id: '68deb330-aab2-11ee-9729-87586cd9b207', name: 'Train索引', description: 'clyh-train-*', displayText: 'Train索引 (clyh-train-*)' },
+      { key: 'gateway', id: 'acb91290-eba6-11ea-9f34-0d8763467285', name: 'Gateway索引', description: 'gateway-*', displayText: 'Gateway索引 (gateway-*)' },
+      { key: 'nginx', id: '4d2fda50-df0e-11eb-bea5-cb68c938a0cc', name: 'Nginx索引', description: 'nginx*', displayText: 'Nginx索引 (nginx*)' },
+      { key: 'clyh', id: '11a318b0-fd26-11ee-b9c9-1770fb731a66', name: 'CLYH索引', description: 'clyh-*', displayText: 'CLYH索引 (clyh-*)' }
     ]
-    
-    const query = encodeURIComponent(filters.join(' AND '))
-    return `${baseUrl}?_g=(time:(from:'now-4h',to:'now'))&_a=(index:'${indexId}',query:(query_string:(query:'${query}')))`
   }
-
+  
+  // 根据应用名称获取默认索引
+  function getDefaultIndexForApp(appName: string): string {
+    if (/酒店|hotel/i.test(appName)) {
+      return 'hotel'
+    } else if (/机票|flight|jp/i.test(appName)) {
+      return 'jp'
+    } else if (/火车|train/i.test(appName)) {
+      return 'train'
+    }
+    return 'middle'
+  }
+  
   // DOM监听器
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
