@@ -307,13 +307,62 @@ if (window.location.hostname === "console.volcengine.com") {
   // 获取可用索引（符合AvailableIndex接口）
   function getAvailableIndexes() {
     return [
-      { key: 'hotel', id: '12f35f00-04e7-11ee-8cc6-c323e0969251', name: 'Hotel索引', description: 'clyh-hotel-*', displayText: 'Hotel索引 (clyh-hotel-*)' },
-      { key: 'jp', id: '4be5d210-a8e3-11ef-8767-8dbabe23815c', name: 'JP索引', description: 'clyh-jp-*', displayText: 'JP索引 (clyh-jp-*)' },
-      { key: 'middle', id: '00db24f0-0f56-11ee-8720-5bf2036a9e1a', name: 'Middle索引', description: 'clyh-middle-*', displayText: 'Middle索引 (clyh-middle-*)' },
-      { key: 'train', id: '68deb330-aab2-11ee-9729-87586cd9b207', name: 'Train索引', description: 'clyh-train-*', displayText: 'Train索引 (clyh-train-*)' },
-      { key: 'gateway', id: 'acb91290-eba6-11ea-9f34-0d8763467285', name: 'Gateway索引', description: 'gateway-*', displayText: 'Gateway索引 (gateway-*)' },
-      { key: 'nginx', id: '4d2fda50-df0e-11eb-bea5-cb68c938a0cc', name: 'Nginx索引', description: 'nginx*', displayText: 'Nginx索引 (nginx*)' },
-      { key: 'clyh', id: '11a318b0-fd26-11ee-b9c9-1770fb731a66', name: 'CLYH索引', description: 'clyh-*', displayText: 'CLYH索引 (clyh-*)' }
+      { 
+        key: 'hotel', 
+        id: '12f35f00-04e7-11ee-8cc6-c323e0969251', 
+        name: 'Hotel索引', 
+        description: 'clyh-hotel-*', 
+        displayText: 'Hotel索引 (clyh-hotel-*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      },
+      { 
+        key: 'jp', 
+        id: '4be5d210-a8e3-11ef-8767-8dbabe23815c', 
+        name: 'JP索引', 
+        description: 'clyh-jp-*', 
+        displayText: 'JP索引 (clyh-jp-*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      },
+      { 
+        key: 'middle', 
+        id: '00db24f0-0f56-11ee-8720-5bf2036a9e1a', 
+        name: 'Middle索引', 
+        description: 'clyh-middle-*', 
+        displayText: 'Middle索引 (clyh-middle-*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      },
+      { 
+        key: 'train', 
+        id: '68deb330-aab2-11ee-9729-87586cd9b207', 
+        name: 'Train索引', 
+        description: 'clyh-train-*', 
+        displayText: 'Train索引 (clyh-train-*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      },
+      { 
+        key: 'gateway', 
+        id: 'acb91290-eba6-11ea-9f34-0d8763467285', 
+        name: 'Gateway索引', 
+        description: 'gateway-*', 
+        displayText: 'Gateway索引 (gateway-*)',
+        fieldMapping: { sessionId: 'RequestHeader.la517-session-id', userId: null }
+      },
+      { 
+        key: 'nginx', 
+        id: '4d2fda50-df0e-11eb-bea5-cb68c938a0cc', 
+        name: 'Nginx索引', 
+        description: 'nginx*', 
+        displayText: 'Nginx索引 (nginx*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      },
+      { 
+        key: 'clyh', 
+        id: '11a318b0-fd26-11ee-b9c9-1770fb731a66', 
+        name: 'CLYH索引', 
+        description: 'clyh-*', 
+        displayText: 'CLYH索引 (clyh-*)',
+        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+      }
     ]
   }
   

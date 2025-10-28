@@ -7,8 +7,9 @@
       <div class="session-info">
         <div class="label">会话信息:</div>
         <div class="info-box">
-          <div><strong>session_id:</strong> {{ sessionInfo?.sessionId || 'N/A' }} → 筛选字段: origin</div>
-          <div><strong>user_id:</strong> {{ sessionInfo?.userId || 'N/A' }} → 筛选字段: staffID</div>
+          <div><strong>session_id:</strong> {{ sessionInfo?.sessionId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.sessionId }}</div>
+          <div v-if="currentFieldMapping.userId"><strong>user_id:</strong> {{ sessionInfo?.userId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.userId }}</div>
+          <div v-else style="color: #999;"><strong>user_id:</strong> 当前索引不筛选user_id</div>
           <div><strong>时间范围:</strong> {{ timeRangeText }}</div>
           <div><strong>当前应用:</strong> {{ currentAppName }}</div>
         </div>
@@ -16,7 +17,7 @@
       
       <!-- 索引选择 -->
       <div class="index-selection">
-        <label class="label">选择索引 (可多选):</label>
+        <label class="label">选择索引:</label>
         <select 
           v-model="selectedIndexes" 
           multiple 
@@ -75,6 +76,25 @@ const emit = defineEmits<{
 
 const selectedIndexes = ref<string[]>([])
 const error = ref<string | null>(null)
+
+// 计算当前选择的索引的字段映射
+const currentFieldMapping = computed(() => {
+  if (selectedIndexes.value.length === 0) {
+    // 默认使用origin和staffID
+    return { sessionId: 'origin', userId: 'staffID' }
+  }
+  
+  // 使用第一个选择的索引的字段映射
+  const firstSelectedKey = selectedIndexes.value[0]
+  const index = props.availableIndexes.find(idx => idx.key === firstSelectedKey)
+  
+  if (index?.fieldMapping) {
+    return index.fieldMapping
+  }
+  
+  // 默认映射
+  return { sessionId: 'origin', userId: 'staffID' }
+})
 
 // 计算时间范围文本
 const timeRangeText = computed(() => {
@@ -183,33 +203,43 @@ const generateKibanaUrl = (): string => {
   // 使用第一个索引
   const indexId = selectedIndexIds[0]
   
-  // 构建filters（完全按照非Vue版本）
-  const filters = [
-    {
+  // 获取当前索引的字段映射
+  const fieldMapping = currentFieldMapping.value
+  
+  // 构建filters（根据字段映射动态生成）
+  const filters = []
+  
+  // 添加 session_id 筛选
+  if (fieldMapping.sessionId) {
+    filters.push({
       meta: {
         alias: null,
         disabled: false,
-        key: "origin",
+        key: fieldMapping.sessionId,
         negate: false,
         params: { query: props.sessionInfo.sessionId },
         type: "phrase"
       },
-      query: { match_phrase: { origin: props.sessionInfo.sessionId } },
+      query: { match_phrase: { [fieldMapping.sessionId]: props.sessionInfo.sessionId } },
       "$state": { store: "appState" }
-    },
-    {
+    })
+  }
+  
+  // 仅当 userId 字段映射存在时，才添加 user_id 筛选
+  if (fieldMapping.userId) {
+    filters.push({
       meta: {
         alias: null,
         disabled: false,
-        key: "staffID", 
+        key: fieldMapping.userId,
         negate: false,
         params: { query: props.sessionInfo.userId },
         type: "phrase"
       },
-      query: { match_phrase: { staffID: props.sessionInfo.userId } },
+      query: { match_phrase: { [fieldMapping.userId]: props.sessionInfo.userId } },
       "$state": { store: "appState" }
-    }
-  ]
+    })
+  }
   
   // 时间配置（按照非Vue版本的逻辑）
   let timeConfig

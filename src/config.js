@@ -5,37 +5,65 @@ window.Tool517Config = {
       hotel: {
         id: "12f35f00-04e7-11ee-8cc6-c323e0969251",
         name: "Hotel索引",
-        description: "clyh-hotel-*"
+        description: "clyh-hotel-*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       },
       jp: {
         id: "4be5d210-a8e3-11ef-8767-8dbabe23815c",
         name: "JP索引",
-        description: "clyh-jp-*"
+        description: "clyh-jp-*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       },
       middle: {
         id: "00db24f0-0f56-11ee-8720-5bf2036a9e1a",
         name: "Middle索引",
-        description: "clyh-middle-*"
+        description: "clyh-middle-*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       },
       train: {
         id: "68deb330-aab2-11ee-9729-87586cd9b207",
         name: "Train索引",
-        description: "clyh-train-*"
+        description: "clyh-train-*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       },
       gateway: {
         id: "acb91290-eba6-11ea-9f34-0d8763467285",
         name: "Gateway索引",
-        description: "gateway-*"
+        description: "gateway-*",
+        fieldMapping: {
+          sessionId: "RequestHeader.la517-session-id",
+          userId: null  // Gateway不筛选user_id
+        }
       },
       nginx: {
         id: "4d2fda50-df0e-11eb-bea5-cb68c938a0cc",
         name: "Nginx索引",
-        description: "nginx*"
+        description: "nginx*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       },
       clyh: {
         id: "11a318b0-fd26-11ee-b9c9-1770fb731a66",
         name: "CLYH索引",
-        description: "clyh-*"
+        description: "clyh-*",
+        fieldMapping: {
+          sessionId: "origin",
+          userId: "staffID"
+        }
       }
     },
   

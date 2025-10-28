@@ -5,6 +5,12 @@ export interface AppInfo {
   detectedAt: string
 }
 
+// 字段映射接口
+export interface FieldMapping {
+  sessionId: string
+  userId: string | null
+}
+
 // 可用索引接口
 export interface AvailableIndex {
   key: string
@@ -12,6 +18,7 @@ export interface AvailableIndex {
   name: string
   description: string
   displayText: string
+  fieldMapping: FieldMapping
 }
 
 // 会话信息接口
