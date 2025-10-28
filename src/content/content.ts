@@ -127,13 +127,24 @@ if (window.location.hostname === "console.volcengine.com") {
   function checkForSessionDetails(target: Element | Document = document) {
     if (!target || typeof target.querySelector !== 'function') return
 
-    // 使用原版本的特定选择器来定位正确位置
-    const detailHeaderRoot = target.querySelector('.DetailHeader__DetailHeaderRoot-fMWUme.bzFdck') ||
-                           document.querySelector('.DetailHeader__DetailHeaderRoot-fMWUme.bzFdck')
-    const defaultItems = target.querySelector('.DetailItems__Root-frzUaJ.jYzHps.default-items') ||
-                        document.querySelector('.DetailItems__Root-frzUaJ.jYzHps.default-items')
-    const specItems = target.querySelector('.DetailItems__Root-frzUaJ.jYzHps.spec-items') ||
-                     document.querySelector('.DetailItems__Root-frzUaJ.jYzHps.spec-items')
+    // 使用更灵活的选择器来定位正确位置（支持类名变化）
+    // 查找以 DetailHeader__DetailHeaderRoot 开头的元素
+    let detailHeaderRoot: Element | null = null
+    const allElements = (target === document ? document : target).querySelectorAll('[class*="DetailHeader__DetailHeaderRoot"]')
+    if (allElements.length > 0) {
+      detailHeaderRoot = allElements[0]
+    }
+    if (!detailHeaderRoot) {
+      detailHeaderRoot = document.querySelector('[class*="DetailHeader__DetailHeaderRoot"]')
+    }
+    
+    // 查找以 DetailItems__Root 开头且包含 default-items 的元素
+    const defaultItems = target.querySelector('[class*="DetailItems__Root"].default-items') ||
+                        document.querySelector('[class*="DetailItems__Root"].default-items')
+    
+    // 查找以 DetailItems__Root 开头且包含 spec-items 的元素
+    const specItems = target.querySelector('[class*="DetailItems__Root"].spec-items') ||
+                     document.querySelector('[class*="DetailItems__Root"].spec-items')
     
     if ((detailHeaderRoot || defaultItems) && specItems) {
       const panelElement = detailHeaderRoot || defaultItems
@@ -146,7 +157,8 @@ if (window.location.hostname === "console.volcengine.com") {
   // 添加跳转日志按钮（使用原版本的精确逻辑）
   function addLogJumpButton(detailsPanel: Element, specItems: Element) {
     // 防止重复添加按钮
-    if (document.querySelector('.tool517-jump-btn')) return
+    const existingButton = document.querySelector('.tool517-jump-btn')
+    if (existingButton) return
     
     const sessionInfo = extractSessionInfo(detailsPanel, specItems)
     
@@ -160,9 +172,48 @@ if (window.location.hostname === "console.volcengine.com") {
         await createIndexSelectionModal(sessionInfo)
       }
       
-      const targetPanel = specItems || detailsPanel
-      targetPanel.appendChild(button)
-      console.log('517工具 - 已在正确位置创建跳转按钮')
+      // 尝试多个可能的插入位置
+      let inserted = false
+      
+      // 方式1: 尝试插入到 spec-items
+      if (specItems && !inserted) {
+        try {
+          specItems.appendChild(button)
+          inserted = true
+          console.log('517工具 - 按钮已插入到 spec-items')
+        } catch (e) {
+          console.log('517工具 - 插入spec-items失败:', e)
+        }
+      }
+      
+      // 方式2: 尝试插入到 detailsPanel
+      if (!inserted && detailsPanel) {
+        try {
+          detailsPanel.appendChild(button)
+          inserted = true
+          console.log('517工具 - 按钮已插入到 detailsPanel')
+        } catch (e) {
+          console.log('517工具 - 插入detailsPanel失败:', e)
+        }
+      }
+      
+      // 方式3: 尝试查找并插入到按钮容器（支持类名变化）
+      if (!inserted) {
+        const buttonContainer = document.querySelector('[class*="DetailHeader__ButtonGroup"], .detail-header-button-group')
+        if (buttonContainer) {
+          try {
+            buttonContainer.appendChild(button)
+            inserted = true
+            console.log('517工具 - 按钮已插入到按钮容器')
+          } catch (e) {
+            console.log('517工具 - 插入按钮容器失败:', e)
+          }
+        }
+      }
+      
+      if (!inserted) {
+        console.error('517工具 - 按钮插入失败，未找到合适位置')
+      }
     }
   }
 
@@ -281,7 +332,7 @@ if (window.location.hostname === "console.volcengine.com") {
   // DOM监听器
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
         mutation.addedNodes.forEach(node => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             checkForSessionDetails(node as Element)
@@ -306,6 +357,7 @@ if (window.location.hostname === "console.volcengine.com") {
         subtree: true
       })
       checkForSessionDetails(document.body)
+      console.log('517工具 - DOM观察器已启动')
     } else {
       setTimeout(startDOMObserver, 100)
     }
@@ -313,7 +365,6 @@ if (window.location.hostname === "console.volcengine.com") {
 
   // 请求应用信息
   function requestAppInfo() {
-    console.log('517工具 - Content Script请求应用信息')
     window.postMessage({
       type: 'TOOL517_GET_APP_INFO'
     }, '*')
@@ -336,10 +387,9 @@ if (window.location.hostname === "console.volcengine.com") {
   const appInfoInterval = setInterval(() => {
     const appInfo = getAppInfoFromPageContext()
     if (appInfo && appInfo.name) {
-      console.log('517工具 - 已获取到应用信息，停止定期请求:', appInfo.name)
+      console.log('517工具 - 已获取应用信息:', appInfo.name)
       clearInterval(appInfoInterval)
     } else {
-      console.log('517工具 - 尚未获取到应用信息，继续请求')
       requestAppInfo()
     }
   }, 5000)
@@ -347,7 +397,6 @@ if (window.location.hostname === "console.volcengine.com") {
   // 10次尝试后停止
   setTimeout(() => {
     clearInterval(appInfoInterval)
-    console.log('517工具 - 停止定期请求应用信息')
   }, 50000)
 
   console.log('517工具 - Content Script (Vue TypeScript版) 已加载')

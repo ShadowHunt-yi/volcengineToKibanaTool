@@ -96,14 +96,23 @@ window.Tool517Config = {
       for (const containerSelector of appContainers) {
         const container = document.querySelector(containerSelector);
         if (container) {
-          const flexDiv = container.querySelector('.arco-select-view-value div[style*="display: flex"]');
-          if (flexDiv && flexDiv.children.length >= 2) {
-            const firstChild = flexDiv.children[0];
-            if (firstChild && firstChild.textContent?.includes('应用')) {
+          // 查找包含flex布局的div
+          const valueContainer = container.querySelector('.arco-select-view-value');
+          if (valueContainer) {
+            // 查找flex布局容器
+            const flexDiv = valueContainer.querySelector('div[style*="display: flex"]');
+            if (flexDiv && flexDiv.children.length >= 2) {
+              // 第一个子元素是蓝色标签（包含"应用"文本）
+              const labelDiv = flexDiv.children[0];
+              // 第二个子元素是应用名称
               const appNameDiv = flexDiv.children[1];
-              const appName = appNameDiv.textContent?.trim();
-              if (appName && appName.length > 1) {
-                return appName;
+              
+              // 验证第一个元素包含"应用"文本
+              if (labelDiv && labelDiv.textContent?.trim() === '应用') {
+                const appName = appNameDiv?.textContent?.trim();
+                if (appName && appName.length > 1 && !appName.includes('请选择')) {
+                  return appName;
+                }
               }
             }
           }
@@ -114,12 +123,12 @@ window.Tool517Config = {
       const allFlexDivs = document.querySelectorAll('.arco-select-view-value div[style*="display: flex"]');
       for (const flexDiv of allFlexDivs) {
         if (flexDiv.children.length >= 2) {
-          const firstChild = flexDiv.children[0];
-          const secondChild = flexDiv.children[1];
+          const labelDiv = flexDiv.children[0];
+          const appNameDiv = flexDiv.children[1];
           
-          const firstText = firstChild.textContent?.trim();
-          if (firstText === '应用') {
-            const appName = secondChild.textContent?.trim();
+          const labelText = labelDiv?.textContent?.trim();
+          if (labelText === '应用') {
+            const appName = appNameDiv?.textContent?.trim();
             if (appName && appName.length > 1 && !appName.includes('请选择') && !appName.includes('北京')) {
               return appName;
             }

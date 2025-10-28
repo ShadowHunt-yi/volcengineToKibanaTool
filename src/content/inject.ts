@@ -4,8 +4,6 @@ import type { AppInfo } from '@/types'
 (function() {
   'use strict'
 
-  console.log('517工具 - Vue版注入脚本开始加载...')
-
   // 页面上下文中的应用缓存
   let pageContextAppCache: AppInfo | null = null
   let appCheckCount = 0
@@ -13,17 +11,13 @@ import type { AppInfo } from '@/types'
 
   // 执行应用检测
   function detectApplication(): { app: string; indexType: string } | null {
-    console.log('517工具 - detectApplication 开始执行')
-    console.log('517工具 - Tool517Config存在:', !!(window as any).Tool517Config)
-    
     const config = (window as any).Tool517Config
     if (config && config.getApplicationName) {
       const appName = config.getApplicationName()
-      console.log('517工具 - 检测到的应用名称:', `"${appName}"`)
       
       if (appName) {
         const indexType = config.getIndexByApplicationName(appName)
-        console.log('517工具 - 应用对应的索引类型:', indexType)
+        console.log('517工具 - 检测到应用:', appName, '索引:', indexType)
         
         pageContextAppCache = {
           name: appName,
@@ -31,28 +25,18 @@ import type { AppInfo } from '@/types'
           detectedAt: new Date().toISOString()
         }
         
-        console.log('517工具 - 更新应用缓存:', pageContextAppCache)
         updateAppInfoInDOM()
-        
         return { app: appName, indexType: indexType }
-      } else {
-        console.log('517工具 - 应用名称为空，检测失败')
       }
-    } else {
-      console.log('517工具 - 配置或方法不可用，无法检测应用')
     }
     return null
   }
 
   // 更新DOM中的应用信息
   function updateAppInfoInDOM() {
-    console.log('517工具 - updateAppInfoInDOM 开始执行')
-    console.log('517工具 - 要更新的应用缓存:', pageContextAppCache)
-    
     // 移除旧的应用信息元素
     const oldElement = document.getElementById('tool517-app-info')
     if (oldElement) {
-      console.log('517工具 - 移除旧的应用信息元素')
       oldElement.remove()
     }
     
@@ -63,46 +47,27 @@ import type { AppInfo } from '@/types'
       element.style.display = 'none'
       element.textContent = JSON.stringify(pageContextAppCache)
       document.body.appendChild(element)
-      console.log('517工具 - 已创建新的应用信息元素:', element.textContent)
-    } else {
-      console.log('517工具 - 应用缓存为空，未创建DOM元素')
     }
   }
 
   // 初始应用检查
   function performInitialAppCheck(): boolean {
-    console.log('517工具 - 页面上下文执行初始应用检查...')
-    
     const result = detectApplication()
-    if (result) {
-      console.log('517工具 - 初始检查成功，检测到应用:', result.app, '索引类型:', result.indexType)
-      return true
-    } else {
-      console.log('517工具 - 初始检查失败，未检测到应用')
-      return false
-    }
+    return !!result
   }
 
   // 定期应用检查
   function startPeriodicAppCheck() {
-    console.log('517工具 - 启动定期应用检查...')
-    
     const checkInterval = setInterval(() => {
       appCheckCount++
-      console.log(`517工具 - 执行第 ${appCheckCount}/${maxAppChecks} 次应用检查`)
       
       if (pageContextAppCache) {
-        console.log('517工具 - 已检测到应用，停止定期检查')
         clearInterval(checkInterval)
         return
       }
       
       const result = detectApplication()
-      if (result) {
-        console.log('517工具 - 定期检查成功，检测到应用:', result.app, '索引类型:', result.indexType)
-        clearInterval(checkInterval)
-      } else if (appCheckCount >= maxAppChecks) {
-        console.log('517工具 - 达到最大检查次数，停止定期检查')
+      if (result || appCheckCount >= maxAppChecks) {
         clearInterval(checkInterval)
       }
     }, 2000)
@@ -110,17 +75,10 @@ import type { AppInfo } from '@/types'
 
   // 手动刷新应用信息
   ;(window as any).tool517RefreshApp = function() {
-    console.log('517工具 - 手动刷新应用信息...')
-    
-    // 清除缓存
     pageContextAppCache = null
-    
     const result = detectApplication()
     if (result) {
-      console.log('517工具 - 刷新成功，检测到应用:', result.app, '索引类型:', result.indexType)
       updateAppInfoInDOM()
-    } else {
-      console.log('517工具 - 刷新后未检测到应用')
     }
   }
 
@@ -257,19 +215,14 @@ import type { AppInfo } from '@/types'
     
     // 监听刷新应用请求
     if (event.data && event.data.type === 'TOOL517_REFRESH_APP' && event.data.source === 'content-script') {
-      console.log('517工具 - 收到内容脚本的应用刷新请求')
       if (typeof (window as any).tool517RefreshApp === 'function') {
         ;(window as any).tool517RefreshApp()
-        console.log('517工具 - 应用刷新完成')
-      } else {
-        console.log('517工具 - tool517RefreshApp 函数不可用')
       }
     }
   })
 
   // 启动应用检测 - 多重保障
   setTimeout(() => {
-    console.log('517工具 - 开始初始应用检测 (2秒后)')
     if (!performInitialAppCheck()) {
       startPeriodicAppCheck()
     }
@@ -279,9 +232,7 @@ import type { AppInfo } from '@/types'
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
-        console.log('517工具 - DOMContentLoaded后的应用检测')
         if (!pageContextAppCache) {
-          console.log('517工具 - 之前未检测到应用，再次尝试')
           detectApplication()
         }
       }, 1000)
@@ -291,16 +242,11 @@ import type { AppInfo } from '@/types'
   // 页面完全加载后的检测
   window.addEventListener('load', () => {
     setTimeout(() => {
-      console.log('517工具 - window.load后的应用检测')
       if (!pageContextAppCache) {
-        console.log('517工具 - 之前未检测到应用，再次尝试')
         detectApplication()
       }
     }, 1000)
   })
 
-  console.log('517工具 - Vue版注入脚本已加载')
-  console.log('517工具 - 可运行 tool517DebugApp() 进行应用选择器调试')
-  console.log('517工具 - 可运行 tool517CheckFunctions() 检查函数状态')
-  console.log('517工具 - 可运行 tool517FullTest() 进行完整流程测试')
+  console.log('517工具 - 注入脚本已加载')
 })() 

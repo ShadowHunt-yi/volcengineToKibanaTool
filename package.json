@@ -1,6 +1,6 @@
 {
   "name": "tool517-vue-extension",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "517工具浏览器扩展 - Vue版本",
   "type": "module",
   "scripts": {
