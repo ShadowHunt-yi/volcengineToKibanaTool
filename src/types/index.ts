@@ -26,6 +26,8 @@ export interface SessionInfo {
   sessionId: string
   userId: string
   time?: string
+  trackId?: string
+  isHttpRequest?: boolean
 }
 
 // Chrome扩展API相关类型扩展

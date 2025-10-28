@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "517工具Vue版",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "火山引擎控制台日志跳转工具，快速从会话详情跳转到后端日志系统 - Vue重构版",
   "permissions": [
     "activeTab",

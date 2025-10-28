@@ -10,6 +10,11 @@
           <div><strong>session_id:</strong> {{ sessionInfo?.sessionId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.sessionId }}</div>
           <div v-if="currentFieldMapping.userId"><strong>user_id:</strong> {{ sessionInfo?.userId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.userId }}</div>
           <div v-else style="color: #999;"><strong>user_id:</strong> 当前索引不筛选user_id</div>
+          <div v-if="sessionInfo?.isHttpRequest && sessionInfo?.trackId" style="padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
+            <strong style="color: #1890ff;">517trackid:</strong> 
+            <span style="font-family: monospace;">{{ sessionInfo.trackId }}</span>
+            <span style="font-size: 12px; margin-left: 8px;">(HTTP请求)</span>
+          </div>
           <div><strong>时间范围:</strong> {{ timeRangeText }}</div>
           <div><strong>当前应用:</strong> {{ currentAppName }}</div>
         </div>
