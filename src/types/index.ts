@@ -9,6 +9,7 @@ export interface AppInfo {
 export interface FieldMapping {
   sessionId: string
   userId: string | null
+  trackId?: string
 }
 
 // 可用索引接口

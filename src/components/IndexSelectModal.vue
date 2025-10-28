@@ -10,8 +10,8 @@
           <div><strong>session_id:</strong> {{ sessionInfo?.sessionId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.sessionId }}</div>
           <div v-if="currentFieldMapping.userId"><strong>user_id:</strong> {{ sessionInfo?.userId || 'N/A' }} → 筛选字段: {{ currentFieldMapping.userId }}</div>
           <div v-else style="color: #999;"><strong>user_id:</strong> 当前索引不筛选user_id</div>
-          <div v-if="sessionInfo?.isHttpRequest && sessionInfo?.trackId" style="padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
-            <strong style="color: #1890ff;">517trackid:</strong> 
+          <div v-if="sessionInfo?.isHttpRequest && sessionInfo?.trackId" >
+            <strong>517trackid:</strong> 
             <span style="font-family: monospace;">{{ sessionInfo.trackId }}</span>
             <span style="font-size: 12px; margin-left: 8px;">(HTTP请求)</span>
           </div>
@@ -242,6 +242,22 @@ const generateKibanaUrl = (): string => {
         type: "phrase"
       },
       query: { match_phrase: { [fieldMapping.userId]: props.sessionInfo.userId } },
+      "$state": { store: "appState" }
+    })
+  }
+  
+  // 如果是HTTP请求且有trackId，添加trackId筛选
+  if (props.sessionInfo.isHttpRequest && props.sessionInfo.trackId && fieldMapping.trackId) {
+    filters.push({
+      meta: {
+        alias: null,
+        disabled: false,
+        key: fieldMapping.trackId,
+        negate: false,
+        params: { query: props.sessionInfo.trackId },
+        type: "phrase"
+      },
+      query: { match_phrase: { [fieldMapping.trackId]: props.sessionInfo.trackId } },
       "$state": { store: "appState" }
     })
   }

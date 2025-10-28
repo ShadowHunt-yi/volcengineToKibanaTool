@@ -8,7 +8,8 @@ window.Tool517Config = {
         description: "clyh-hotel-*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       },
       jp: {
@@ -17,7 +18,8 @@ window.Tool517Config = {
         description: "clyh-jp-*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       },
       middle: {
@@ -26,7 +28,8 @@ window.Tool517Config = {
         description: "clyh-middle-*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       },
       train: {
@@ -35,7 +38,8 @@ window.Tool517Config = {
         description: "clyh-train-*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       },
       gateway: {
@@ -44,7 +48,8 @@ window.Tool517Config = {
         description: "gateway-*",
         fieldMapping: {
           sessionId: "RequestHeader.la517-session-id",
-          userId: null  // Gateway不筛选user_id
+          userId: null,  // Gateway不筛选user_id
+          trackId: "RequestHeader.517trackID"
         }
       },
       nginx: {
@@ -53,7 +58,8 @@ window.Tool517Config = {
         description: "nginx*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       },
       clyh: {
@@ -62,7 +68,8 @@ window.Tool517Config = {
         description: "clyh-*",
         fieldMapping: {
           sessionId: "origin",
-          userId: "staffID"
+          userId: "staffID",
+          trackId: "trackID"
         }
       }
     },

@@ -475,7 +475,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'Hotel索引', 
         description: 'clyh-hotel-*', 
         displayText: 'Hotel索引 (clyh-hotel-*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       },
       { 
         key: 'jp', 
@@ -483,7 +483,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'JP索引', 
         description: 'clyh-jp-*', 
         displayText: 'JP索引 (clyh-jp-*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       },
       { 
         key: 'middle', 
@@ -491,7 +491,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'Middle索引', 
         description: 'clyh-middle-*', 
         displayText: 'Middle索引 (clyh-middle-*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       },
       { 
         key: 'train', 
@@ -499,7 +499,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'Train索引', 
         description: 'clyh-train-*', 
         displayText: 'Train索引 (clyh-train-*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       },
       { 
         key: 'gateway', 
@@ -507,7 +507,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'Gateway索引', 
         description: 'gateway-*', 
         displayText: 'Gateway索引 (gateway-*)',
-        fieldMapping: { sessionId: 'RequestHeader.la517-session-id', userId: null }
+        fieldMapping: { sessionId: 'RequestHeader.la517-session-id', userId: null, trackId: 'RequestHeader.517trackID' }
       },
       { 
         key: 'nginx', 
@@ -515,7 +515,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'Nginx索引', 
         description: 'nginx*', 
         displayText: 'Nginx索引 (nginx*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       },
       { 
         key: 'clyh', 
@@ -523,7 +523,7 @@ if (window.location.hostname === "console.volcengine.com") {
         name: 'CLYH索引', 
         description: 'clyh-*', 
         displayText: 'CLYH索引 (clyh-*)',
-        fieldMapping: { sessionId: 'origin', userId: 'staffID' }
+        fieldMapping: { sessionId: 'origin', userId: 'staffID', trackId: 'trackID' }
       }
     ]
   }
