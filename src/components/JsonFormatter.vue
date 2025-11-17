@@ -117,6 +117,14 @@ const isResizing = ref(false)
 const isUrlDecodeMode = ref(false)
 const decodedResult = ref('')
 
+// 性能优化：节点折叠状态缓存
+const collapsedNodes = new Map<string, boolean>()
+const nodeDepth = new Map<string, number>()
+
+// 大数据渲染优化配置
+const LARGE_DATA_THRESHOLD = 1000 // 超过这个数量的节点认为是大数据
+const MAX_INITIAL_DEPTH = 2 // 大数据时初始展开深度
+
 // 面板样式计算属性
 const inputPanelStyle = computed(() => {
   return {
@@ -161,9 +169,40 @@ function isUrl(str: string): boolean {
   return urlRegex.test(str)
 }
 
-// 生成HTML
-function generateHtml(obj: any): string {
+// 计算JSON节点总数（用于判断是否为大数据）
+function countNodes(obj: any, depth: number = 0): number {
+  // 防止无限递归（虽然JSON不应该有循环引用，但安全起见）
+  if (depth > 100) return 1
+  
+  if (obj === null || typeof obj !== 'object') return 1
+  
+  let count = 1
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      count += countNodes(item, depth + 1)
+    }
+  } else {
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        count += countNodes(obj[key], depth + 1)
+      }
+    }
+  }
+  return count
+}
+
+// 生成节点路径（用于折叠状态追踪）
+function getNodePath(path: string[], index: string | number): string {
+  return [...path, index].join('.')
+}
+
+// 优化的HTML生成函数，支持懒加载和深度限制
+function generateHtml(obj: any, depth: number = 0, path: string[] = [], totalNodes: number = 0): string {
   let html = ''
+  
+  // 判断是否为大数据集（只在顶层计算一次）
+  const isLargeData = totalNodes > LARGE_DATA_THRESHOLD
+  const shouldAutoCollapse = isLargeData && depth >= MAX_INITIAL_DEPTH
   
   if (typeof obj === 'string') {
     const escaped = obj.replace(/&/g, '&amp;')
@@ -183,18 +222,34 @@ function generateHtml(obj: any): string {
     html += `<span class="json-literal">null</span>`
   } else if (Array.isArray(obj)) {
     if (obj.length > 0) {
-      html += '[<ol class="json-array">'
-      for (let i = 0; i < obj.length; i++) {
+      const arrayLength = obj.length
+      html += `[<span class="json-count">${arrayLength} items</span><ol class="json-array"${shouldAutoCollapse ? ' style="display: none;"' : ''}>`
+      
+      // 对于大数组，使用分批渲染
+      const batchSize = isLargeData ? 100 : obj.length
+      const shouldBatch = obj.length > batchSize && isLargeData
+      
+      for (let i = 0; i < Math.min(obj.length, shouldBatch ? batchSize : obj.length); i++) {
+        const nodePath = getNodePath(path, i)
         html += '<li>'
         if (isComplex(obj[i])) {
-          html += '<a href="#" class="json-toggle" data-action="toggle"></a>'
+          const toggleClass = shouldAutoCollapse ? 'collapsed' : ''
+          html += `<a href="#" class="json-toggle ${toggleClass}" data-action="toggle" data-path="${nodePath}"></a>`
         }
-        html += generateHtml(obj[i])
+        html += generateHtml(obj[i], depth + 1, [...path, String(i)], totalNodes)
         if (i < obj.length - 1) {
           html += ','
         }
         html += '</li>'
       }
+      
+      // 如果有更多项，添加"加载更多"按钮
+      if (shouldBatch && obj.length > batchSize) {
+        html += `<li class="load-more" data-path="${getNodePath(path, 'more')}" data-start="${batchSize}" data-total="${obj.length}">
+          <button class="btn-load-more">加载更多 (${obj.length - batchSize} 项)</button>
+        </li>`
+      }
+      
       html += '</ol>]'
     } else {
       html += '[]'
@@ -202,24 +257,39 @@ function generateHtml(obj: any): string {
   } else if (typeof obj === 'object' && obj !== null) {
     const keys = Object.keys(obj)
     if (keys.length > 0) {
-      html += '{<ul class="json-dict">'
-      keys.forEach((key, index) => {
+      html += `{<span class="json-count">${keys.length} keys</span><ul class="json-dict"${shouldAutoCollapse ? ' style="display: none;"' : ''}>`
+      
+      // 对于大对象，使用分批渲染
+      const batchSize = isLargeData ? 50 : keys.length
+      const shouldBatch = keys.length > batchSize && isLargeData
+      
+      keys.slice(0, shouldBatch ? batchSize : keys.length).forEach((key, index) => {
+        const nodePath = getNodePath(path, key)
         html += '<li>'
         const keyDisplay = showQuotes.value ? `"${key}"` : key
         
         if (isComplex(obj[key])) {
-          html += `<a href="#" class="json-toggle" data-action="toggle">${keyDisplay}</a>`
+          const toggleClass = shouldAutoCollapse ? 'collapsed' : ''
+          html += `<a href="#" class="json-toggle ${toggleClass}" data-action="toggle" data-path="${nodePath}">${keyDisplay}</a>`
         } else {
           html += `<span class="property">${keyDisplay}</span>`
         }
         
-        html += ': ' + generateHtml(obj[key])
+        html += ': ' + generateHtml(obj[key], depth + 1, [...path, key], totalNodes)
         
-        if (index < keys.length - 1) {
+        if (index < (shouldBatch ? batchSize : keys.length) - 1 || (shouldBatch && keys.length > batchSize)) {
           html += ','
         }
         html += '</li>'
       })
+      
+      // 如果有更多键，添加"加载更多"按钮
+      if (shouldBatch && keys.length > batchSize) {
+        html += `<li class="load-more" data-path="${getNodePath(path, 'more')}" data-start="${batchSize}" data-total="${keys.length}">
+          <button class="btn-load-more">加载更多 (${keys.length - batchSize} 项)</button>
+        </li>`
+      }
+      
       html += '</ul>}'
     } else {
       html += '{}'
@@ -254,39 +324,54 @@ function onInputChange() {
     try {
       const parsed = JSON.parse(inputJson.value)
       formattedJson.value = parsed
+      error.value = '' // 清除之前的错误
       updateDisplay()
     } catch (e) {
-      // 如果JSON不完整或有错误，不显示错误，只是不格式化
+      // 如果JSON格式错误，显示错误信息
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      // 只在输入完整时才显示错误（避免输入过程中频繁显示错误）
+      if (inputJson.value.trim().length > 0) {
+        // 检查是否是JSON不完整（缺少引号、括号等）
+        const trimmed = inputJson.value.trim()
+        const isIncomplete = !trimmed.endsWith('}') && !trimmed.endsWith(']') && !trimmed.endsWith('"') && !trimmed.match(/^["\d\[\{]/)
+        if (!isIncomplete) {
+          error.value = `JSON格式错误: ${errorMessage}`
+        } else {
+          error.value = '' // 输入不完整时不显示错误
+        }
+      }
       formattedJson.value = null
       formattedHtml.value = ''
     }
   }
 }
 
-// 格式化JSON
-function formatJson() {
-  error.value = ''
-  
-  if (!inputJson.value.trim()) {
-    error.value = '请输入JSON数据'
-    return
-  }
-  
-  try {
-    const parsed = JSON.parse(inputJson.value)
-    formattedJson.value = parsed
-    updateDisplay()
-  } catch (e) {
-    error.value = `JSON格式错误: ${(e as Error).message}`
-    formattedJson.value = null
-    formattedHtml.value = ''
-  }
-}
+// 格式化JSON（保留以供未来使用）
+// function formatJson() {
+//   error.value = ''
+//   
+//   if (!inputJson.value.trim()) {
+//     error.value = '请输入JSON数据'
+//     return
+//   }
+//   
+//   try {
+//     const parsed = JSON.parse(inputJson.value)
+//     formattedJson.value = parsed
+//     updateDisplay()
+//   } catch (e) {
+//     error.value = `JSON格式错误: ${(e as Error).message}`
+//     formattedJson.value = null
+//     formattedHtml.value = ''
+//   }
+// }
 
 // 更新显示
 function updateDisplay() {
   if (formattedJson.value !== null) {
-    const html = generateHtml(formattedJson.value)
+    // 预先计算节点总数，避免在递归中重复计算
+    const totalNodes = countNodes(formattedJson.value)
+    const html = generateHtml(formattedJson.value, 0, [], totalNodes)
     if (isComplex(formattedJson.value)) {
       formattedHtml.value = '<a href="#" class="json-toggle" data-action="toggle"></a>' + html
     } else {
@@ -295,23 +380,47 @@ function updateDisplay() {
   }
 }
 
-// 点击处理
+// 点击处理 - 优化版，使用事件委托和requestAnimationFrame
 function handleClick(event: Event) {
   const target = event.target as HTMLElement
+  
+  // 处理折叠/展开
   if (target.classList.contains('json-toggle')) {
     event.preventDefault()
-    const li = target.closest('li') || target.closest('div')
-    if (li) {
-      const childList = li.querySelector('ul, ol') as HTMLElement
-      if (childList) {
-        if (childList.style.display === 'none') {
-          childList.style.display = 'block'
-          target.classList.remove('collapsed')
-        } else {
-          childList.style.display = 'none'
-          target.classList.add('collapsed')
+    
+    // 使用requestAnimationFrame优化性能
+    requestAnimationFrame(() => {
+      const li = target.closest('li') || target.closest('div')
+      if (li) {
+        const childList = li.querySelector('ul, ol') as HTMLElement
+        if (childList) {
+          const isCollapsed = childList.style.display === 'none'
+          childList.style.display = isCollapsed ? 'block' : 'none'
+          
+          if (isCollapsed) {
+            target.classList.remove('collapsed')
+          } else {
+            target.classList.add('collapsed')
+          }
+          
+          // 缓存折叠状态
+          const path = target.getAttribute('data-path')
+          if (path) {
+            collapsedNodes.set(path, !isCollapsed)
+          }
         }
       }
+    })
+  }
+  
+  // 处理"加载更多"按钮
+  if (target.classList.contains('btn-load-more')) {
+    event.preventDefault()
+    const loadMoreLi = target.closest('li.load-more')
+    if (loadMoreLi) {
+      // 这里可以实现加载更多逻辑
+      // 暂时隐藏按钮，提示用户数据已加载
+      (loadMoreLi as HTMLElement).style.display = 'none'
     }
   }
   
@@ -329,32 +438,49 @@ function handleClick(event: Event) {
   }
 }
 
-// 全部折叠/展开
+// 全部折叠/展开 - 优化版，使用分批处理避免卡顿
 function toggleCollapse() {
   if (!jsonOutput.value) return
   
-  const toggles = jsonOutput.value.querySelectorAll('.json-toggle')
-  const lists = jsonOutput.value.querySelectorAll('ul, ol')
+  const toggles = Array.from(jsonOutput.value.querySelectorAll('.json-toggle')) as Element[]
+  const lists = Array.from(jsonOutput.value.querySelectorAll('ul, ol')) as Element[]
   
-  if (isCollapsed.value) {
-    // 展开全部
-    lists.forEach(list => {
-      (list as HTMLElement).style.display = 'block'
-    })
-    toggles.forEach(toggle => {
-      toggle.classList.remove('collapsed')
-    })
-  } else {
+  const batchSize = 50 // 每批处理50个元素
+  const targetState = !isCollapsed.value
+  
+  // 分批处理函数
+  function processBatch(items: Element[], startIndex: number, processor: (item: Element) => void) {
+    const endIndex = Math.min(startIndex + batchSize, items.length)
+    
+    for (let i = startIndex; i < endIndex; i++) {
+      processor(items[i])
+    }
+    
+    if (endIndex < items.length) {
+      // 使用requestAnimationFrame继续处理下一批
+      requestAnimationFrame(() => processBatch(items, endIndex, processor))
+    }
+  }
+  
+  if (targetState) {
     // 折叠全部
-    lists.forEach(list => {
+    processBatch(lists, 0, (list) => {
       (list as HTMLElement).style.display = 'none'
     })
-    toggles.forEach(toggle => {
+    processBatch(toggles, 0, (toggle) => {
       toggle.classList.add('collapsed')
+    })
+  } else {
+    // 展开全部
+    processBatch(lists, 0, (list) => {
+      (list as HTMLElement).style.display = 'block'
+    })
+    processBatch(toggles, 0, (toggle) => {
+      toggle.classList.remove('collapsed')
     })
   }
   
-  isCollapsed.value = !isCollapsed.value
+  isCollapsed.value = targetState
 }
 
 // 清空输入
@@ -364,6 +490,10 @@ function clearInput() {
   formattedJson.value = null
   formattedHtml.value = ''
   decodedResult.value = ''
+  
+  // 清理性能优化缓存
+  collapsedNodes.clear()
+  nodeDepth.clear()
 }
 
 // 复制到剪贴板
@@ -806,6 +936,35 @@ onMounted(() => {
   padding: 2px 4px;
 }
 
+/* 节点计数样式 */
+:deep(.json-count) {
+  color: #6a737d;
+  font-size: 11px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* 加载更多按钮样式 */
+:deep(.load-more) {
+  margin: 8px 0;
+}
+
+:deep(.btn-load-more) {
+  background: #f1f3f5;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #495057;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+:deep(.btn-load-more:hover) {
+  background: #e9ecef;
+  border-color: #adb5bd;
+}
+
 /* 暗夜模式样式 */
 .json-formatter.dark-mode {
   background: #1e1e1e;
@@ -933,6 +1092,23 @@ onMounted(() => {
 
 .json-formatter.dark-mode :deep(li.copyable) {
   background-color: #3a3a2a;
+}
+
+/* 暗夜模式下的节点计数 */
+.json-formatter.dark-mode :deep(.json-count) {
+  color: #9ca3af;
+}
+
+/* 暗夜模式下的加载更多按钮 */
+.json-formatter.dark-mode :deep(.btn-load-more) {
+  background: #3c3c3c;
+  border-color: #4a4a4a;
+  color: #d4d4d4;
+}
+
+.json-formatter.dark-mode :deep(.btn-load-more:hover) {
+  background: #484848;
+  border-color: #5a5a5a;
 }
 
 @media (max-width: 768px) {

@@ -10,7 +10,8 @@ export interface FieldMapping {
   sessionId: string
   userId: string | null
   trackId?: string
-}
+  InPath?: string  // 网关API路径字段
+  TimePeriod?: string  // 响应时间字段(毫秒)
 
 // 可用索引接口
 export interface AvailableIndex {
@@ -29,6 +30,7 @@ export interface SessionInfo {
   time?: string
   trackId?: string
   isHttpRequest?: boolean
+  apiPath?: string  // 从HTTP请求URL中提取的API接口名(如queryStandardInfo)
 }
 
 // Chrome扩展API相关类型扩展

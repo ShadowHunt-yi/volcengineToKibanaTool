@@ -147,10 +147,32 @@ if (window.location.hostname === "console.volcengine.com") {
     return null
   }
 
+  // 从HTTP请求URL中提取API接口名
+  function extractApiPathFromUrl(url: string): string | null {
+    try {
+      // 从URL中提取最后一个路径段作为API接口名
+      // 例如: hotelgateaway.517la.com/h5/HOTELSTANDARDBUSSINESSSERVICE/api/queryStandardInfo
+      // 提取: queryStandardInfo
+      const urlParts = url.split('/')
+      const lastSegment = urlParts[urlParts.length - 1]
+      
+      // 移除可能的查询参数
+      const apiPath = lastSegment.split('?')[0]
+      
+      // 验证提取的接口名是否合法(至少2个字符)
+      if (apiPath && apiPath.length >= 2) {
+        return apiPath
+      }
+    } catch (error) {
+      console.error('517工具 - 提取API路径失败:', error)
+    }
+    return null
+  }
+
   // 会话信息提取函数（参照非Vue版本的DOM结构提取方式，包含时间提取）
   function extractSessionInfo(element: Element, specItems?: Element): SessionInfo | null {
     try {
-      const info: { sessionId: string, userId: string, time?: string, trackId?: string, isHttpRequest?: boolean } = { 
+      const info: { sessionId: string, userId: string, time?: string, trackId?: string, isHttpRequest?: boolean, apiPath?: string } = { 
         sessionId: '', 
         userId: '' 
       }
@@ -160,6 +182,19 @@ if (window.location.hostname === "console.volcengine.com") {
       if (keyElement && keyElement.textContent?.trim() === 'HTTP') {
         info.isHttpRequest = true
         // trackId将在点击按钮时切换到JSON标签页后提取
+        
+        // 尝试从event-brief中提取API路径
+        const eventBrief = document.querySelector('.event-brief [class*="DetailHeader__LabelValueTag"] .value')
+        if (eventBrief) {
+          const urlText = eventBrief.textContent?.trim()
+          if (urlText) {
+            const apiPath = extractApiPathFromUrl(urlText)
+            if (apiPath) {
+              info.apiPath = apiPath
+              console.log('517工具 - 提取到API路径:', apiPath)
+            }
+          }
+        }
       }
       
       // 优先使用specItems进行结构化提取（参照非Vue版本）
@@ -244,6 +279,10 @@ if (window.location.hostname === "console.volcengine.com") {
           // 如果已经有trackId，也添加进去
           if (info.trackId) {
             result.trackId = info.trackId
+          }
+          // 如果提取到apiPath，也添加进去
+          if (info.apiPath) {
+            result.apiPath = info.apiPath
           }
         }
         
@@ -508,6 +547,14 @@ if (window.location.hostname === "console.volcengine.com") {
         description: 'gateway-*', 
         displayText: 'Gateway索引 (gateway-*)',
         fieldMapping: { sessionId: 'RequestHeader.la517-session-id', userId: null, trackId: 'RequestHeader.517trackID' }
+      },
+      { 
+        key: 'apiservice', 
+        id: 'acb91290-eba6-11ea-9f34-0d8763467285', 
+        name: 'APIService索引', 
+        description: 'gateway-*', 
+        displayText: 'Gateway索引 (gateway-*)',
+        fieldMapping: { InPath: 'InPath',  TimePeriod: 'TimePeriod' }
       },
       { 
         key: 'nginx', 

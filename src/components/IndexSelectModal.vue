@@ -15,6 +15,11 @@
             <span style="font-family: monospace;">{{ sessionInfo.trackId }}</span>
             <span style="font-size: 12px; margin-left: 8px;">(HTTP请求)</span>
           </div>
+          <div v-if="sessionInfo?.apiPath && currentFieldMapping.InPath">
+            <strong>API接口:</strong> 
+            <span style="font-family: monospace;">{{ sessionInfo.apiPath }}</span>
+            <span style="font-size: 12px; margin-left: 8px;">→ 筛选字段: {{ currentFieldMapping.InPath }}</span>
+          </div>
           <div><strong>时间范围:</strong> {{ timeRangeText }}</div>
           <div><strong>当前应用:</strong> {{ currentAppName }}</div>
         </div>
@@ -37,6 +42,22 @@
             {{ index.displayText }}
           </option>
         </select>
+      </div>
+      
+      <!-- TimePeriod 阈值设置(仅当索引支持时显示) -->
+      <div v-if="supportsTimePeriod" class="timeperiod-input">
+        <label class="label">
+          响应时间阈值(毫秒):
+          <span class="hint">查询响应时间 ≥ 此值的记录</span>
+        </label>
+        <input 
+          v-model.number="timePeriodThreshold" 
+          type="number" 
+          min="0"
+          step="100"
+          class="input-field"
+          placeholder="输入时间阈值,如10000"
+        />
       </div>
       
       <!-- 按钮组 -->
@@ -81,6 +102,7 @@ const emit = defineEmits<{
 
 const selectedIndexes = ref<string[]>([])
 const error = ref<string | null>(null)
+const timePeriodThreshold = ref<number>(10000)  // TimePeriod阈值,默认10000毫秒
 
 // 计算当前选择的索引的字段映射
 const currentFieldMapping = computed(() => {
@@ -107,6 +129,14 @@ const timeRangeText = computed(() => {
     return `${props.sessionInfo.time} 前后各1小时`
   }
   return '默认前4小时到现在'
+})
+
+// 判断当前选中的索引是否支持TimePeriod筛选
+const supportsTimePeriod = computed(() => {
+  if (selectedIndexes.value.length === 0) return false
+  const firstSelectedKey = selectedIndexes.value[0]
+  const index = props.availableIndexes.find(idx => idx.key === firstSelectedKey)
+  return !!index?.fieldMapping?.TimePeriod
 })
 
 // 监听默认索引变化，自动选中
@@ -262,6 +292,47 @@ const generateKibanaUrl = (): string => {
     })
   }
   
+  // 如果有apiPath且字段映射存在InPath，添加InPath筛选
+  if (props.sessionInfo.apiPath && fieldMapping.InPath) {
+    filters.push({
+      meta: {
+        alias: null,
+        disabled: false,
+        key: fieldMapping.InPath,
+        negate: false,
+        params: { query: props.sessionInfo.apiPath },
+        type: "phrase"
+      },
+      query: { match_phrase: { [fieldMapping.InPath]: props.sessionInfo.apiPath } },
+      "$state": { store: "appState" }
+    })
+  }
+  
+  // 如果字段映射包含TimePeriod，添加range查询
+  if (fieldMapping.TimePeriod && timePeriodThreshold.value > 0) {
+    filters.push({
+      meta: {
+        alias: null,
+        disabled: false,
+        key: fieldMapping.TimePeriod,
+        negate: false,
+        params: { 
+          gte: timePeriodThreshold.value
+        },
+        type: "range"
+      },
+      query: { 
+        range: { 
+          [fieldMapping.TimePeriod]: { 
+            gte: timePeriodThreshold.value,
+            lt: null
+          } 
+        } 
+      },
+      "$state": { store: "appState" }
+    })
+  }
+  
   // 时间配置（按照非Vue版本的逻辑）
   let timeConfig
   if (props.sessionInfo.time) {
@@ -380,7 +451,26 @@ h3 {
 .hint {
   color: #999;
   font-size: 12px;
+  margin-left: 8px;
+}
+
+.timeperiod-input {
+  margin-bottom: 20px;
+}
+
+.input-field {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
   margin-top: 4px;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
 }
 
 .button-group {
