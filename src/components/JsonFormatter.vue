@@ -21,6 +21,9 @@
         <button @click="toggleUrlDecodeMode" class="btn" :class="{ 'btn-active': isUrlDecodeMode }" title="URL解码模式">
           🔗
         </button>
+        <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode" title="扁平化嵌套JSON">
+          ⬇️
+        </button>
         <button @click="toggleDarkMode" class="btn btn-theme" :title="isDarkMode ? '切换到亮色模式' : '切换到暗夜模式'">
           {{ isDarkMode ? '☀️' : '🌙' }}
         </button>
@@ -33,6 +36,9 @@
         <span class="stat-item">数组: {{ stats.arrays }}</span>
         <span class="stat-item">字符串: {{ stats.strings }}</span>
         <span class="stat-item">数字: {{ stats.numbers }}</span>
+        <span v-if="flattenStats" class="stat-item stat-flatten">
+          扁平化: {{ flattenStats.original }} → {{ flattenStats.flattened }} 节点
+        </span>
       </div>
     </div>
 
@@ -117,6 +123,10 @@ const isResizing = ref(false)
 const isUrlDecodeMode = ref(false)
 const decodedResult = ref('')
 
+// 扁平化模式
+const isFlattenMode = ref(false)
+const flattenStats = ref<{ original: number; flattened: number } | null>(null)
+
 // 性能优化：节点折叠状态缓存
 const collapsedNodes = new Map<string, boolean>()
 const nodeDepth = new Map<string, number>()
@@ -124,6 +134,10 @@ const nodeDepth = new Map<string, number>()
 // 大数据渲染优化配置
 const LARGE_DATA_THRESHOLD = 1000 // 超过这个数量的节点认为是大数据
 const MAX_INITIAL_DEPTH = 2 // 大数据时初始展开深度
+
+// 扁平化优化配置
+const MAX_FLATTEN_DEPTH = 20 // 最大扁平化深度,防止无限递归
+const MAX_FLATTEN_NODES = 50000 // 最大扁平化节点数,防止性能问题
 
 // 面板样式计算属性
 const inputPanelStyle = computed(() => {
@@ -167,6 +181,181 @@ function isComplex(obj: any): boolean {
 function isUrl(str: string): boolean {
   const urlRegex = /^(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?/
   return urlRegex.test(str)
+}
+
+// 检测字符串是否是JSON格式
+function isJsonString(str: string): boolean {
+  if (typeof str !== 'string') return false
+  const trimmed = str.trim()
+  // 必须以 { 或 [ 开头
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
+  // 简单长度检查,避免解析过长的非JSON字符串
+  if (trimmed.length > 1000000) return false // 1MB限制
+  return true
+}
+
+// 扁平化嵌套JSON - 性能优化版本
+function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any> {
+  const result: Record<string, any> = {}
+  let nodeCount = 0
+  
+  // 循环引用检测
+  const seen = new WeakSet()
+  
+  function flatten(obj: any, path: string, currentDepth: number): void {
+    // 性能保护: 深度限制
+    if (currentDepth > MAX_FLATTEN_DEPTH) {
+      result[path] = '[Max depth reached]'
+      return
+    }
+    
+    // 性能保护: 节点数量限制
+    if (nodeCount > MAX_FLATTEN_NODES) {
+      result[path] = '[Max nodes limit reached]'
+      return
+    }
+    
+    // 处理null和undefined
+    if (obj === null || obj === undefined) {
+      result[path] = obj
+      nodeCount++
+      return
+    }
+    
+    // 处理字符串类型 - 检测是否是JSON字符串
+    if (typeof obj === 'string') {
+      // 尝试检测并解析JSON字符串
+      if (isJsonString(obj)) {
+        try {
+          const parsed = JSON.parse(obj)
+          // 如果解析成功且是对象或数组,继续递归扁平化
+          if (typeof parsed === 'object' && parsed !== null) {
+            flatten(parsed, path, currentDepth + 1)
+            return
+          }
+        } catch (e) {
+          // 解析失败,当作普通字符串处理
+        }
+      }
+      // 普通字符串直接赋值
+      result[path] = obj
+      nodeCount++
+      return
+    }
+    
+    // 处理数组
+    if (Array.isArray(obj)) {
+      // 空数组直接赋值
+      if (obj.length === 0) {
+        result[path] = []
+        nodeCount++
+        return
+      }
+      
+      // 遍历数组元素
+      obj.forEach((item, index) => {
+        const arrayPath = `${path}[${index}]`
+        
+        if (item === null || item === undefined) {
+          result[arrayPath] = item
+          nodeCount++
+        } else if (typeof item === 'string') {
+          // 字符串类型需要检测是否是JSON字符串
+          if (isJsonString(item)) {
+            try {
+              const parsed = JSON.parse(item)
+              if (typeof parsed === 'object' && parsed !== null) {
+                flatten(parsed, arrayPath, currentDepth + 1)
+                return
+              }
+            } catch (e) {
+              // 解析失败,当作普通字符串
+            }
+          }
+          // 普通字符串直接赋值
+          result[arrayPath] = item
+          nodeCount++
+        } else if (typeof item === 'object') {
+          // 循环引用检测
+          if (seen.has(item)) {
+            result[arrayPath] = '[Circular Reference]'
+            nodeCount++
+            return
+          }
+          seen.add(item)
+          
+          // 递归处理对象或数组
+          flatten(item, arrayPath, currentDepth + 1)
+        } else {
+          // 其他基本类型直接赋值
+          result[arrayPath] = item
+          nodeCount++
+        }
+      })
+    } 
+    // 处理对象
+    else if (typeof obj === 'object') {
+      // 循环引用检测
+      if (seen.has(obj)) {
+        result[path] = '[Circular Reference]'
+        nodeCount++
+        return
+      }
+      seen.add(obj)
+      
+      const keys = Object.keys(obj)
+      
+      // 空对象直接赋值
+      if (keys.length === 0) {
+        result[path] = {}
+        nodeCount++
+        return
+      }
+      
+      // 遍历对象属性
+      keys.forEach(key => {
+        const newPath = path ? `${path}.${key}` : key
+        const value = obj[key]
+        
+        if (value === null || value === undefined) {
+          result[newPath] = value
+          nodeCount++
+        } else if (typeof value === 'string') {
+          // 字符串类型需要检测是否是JSON字符串
+          if (isJsonString(value)) {
+            try {
+              const parsed = JSON.parse(value)
+              if (typeof parsed === 'object' && parsed !== null) {
+                flatten(parsed, newPath, currentDepth + 1)
+                return
+              }
+            } catch (e) {
+              // 解析失败,当作普通字符串
+            }
+          }
+          // 普通字符串直接赋值
+          result[newPath] = value
+          nodeCount++
+        } else if (typeof value === 'object') {
+          // 递归处理嵌套对象或数组
+          flatten(value, newPath, currentDepth + 1)
+        } else {
+          // 其他基本类型直接赋值
+          result[newPath] = value
+          nodeCount++
+        }
+      })
+    } 
+    // 其他基本类型 (number, boolean等)
+    else {
+      result[path] = obj
+      nodeCount++
+    }
+  }
+  
+  flatten(data, prefix, depth)
+  
+  return result
 }
 
 // 计算JSON节点总数（用于判断是否为大数据）
@@ -323,7 +512,25 @@ function onInputChange() {
     // JSON格式化模式
     try {
       const parsed = JSON.parse(inputJson.value)
-      formattedJson.value = parsed
+      
+      // 如果启用了扁平化模式,进行扁平化处理
+      if (isFlattenMode.value) {
+        const originalNodeCount = countNodes(parsed)
+        const flattened = parseNestedJSON(parsed)
+        const flattenedNodeCount = Object.keys(flattened).length
+        
+        // 更新统计信息
+        flattenStats.value = {
+          original: originalNodeCount,
+          flattened: flattenedNodeCount
+        }
+        
+        formattedJson.value = flattened
+      } else {
+        flattenStats.value = null
+        formattedJson.value = parsed
+      }
+      
       error.value = '' // 清除之前的错误
       updateDisplay()
     } catch (e) {
@@ -342,6 +549,7 @@ function onInputChange() {
       }
       formattedJson.value = null
       formattedHtml.value = ''
+      flattenStats.value = null
     }
   }
 }
@@ -373,7 +581,7 @@ function updateDisplay() {
     const totalNodes = countNodes(formattedJson.value)
     const html = generateHtml(formattedJson.value, 0, [], totalNodes)
     if (isComplex(formattedJson.value)) {
-      formattedHtml.value = '<a href="#" class="json-toggle" data-action="toggle"></a>' + html
+      formattedHtml.value = '<a href="#" class="json-toggle" data-action="toggle" data-path="root"></a>' + html
     } else {
       formattedHtml.value = html
     }
@@ -390,24 +598,52 @@ function handleClick(event: Event) {
     
     // 使用requestAnimationFrame优化性能
     requestAnimationFrame(() => {
-      const li = target.closest('li') || target.closest('div')
-      if (li) {
-        const childList = li.querySelector('ul, ol') as HTMLElement
-        if (childList) {
-          const isCollapsed = childList.style.display === 'none'
-          childList.style.display = isCollapsed ? 'block' : 'none'
-          
-          if (isCollapsed) {
-            target.classList.remove('collapsed')
-          } else {
-            target.classList.add('collapsed')
+      // 改进的选择器逻辑: 找到toggle后面的ul或ol元素
+      // 方法1: 从父元素中查找所有的ul/ol,选择距离toggle最近的一个
+      const parent = target.parentElement
+      if (!parent) return
+      
+      // 查找当前li/div下的第一个ul或ol(包括深层嵌套的)
+      let childList: HTMLElement | null = null
+      
+      // 先尝试找紧邻的兄弟元素中的ul/ol
+      let sibling = target.nextSibling
+      while (sibling) {
+        if (sibling.nodeType === Node.ELEMENT_NODE) {
+          const elem = sibling as HTMLElement
+          if (elem.tagName === 'UL' || elem.tagName === 'OL') {
+            childList = elem
+            break
           }
-          
-          // 缓存折叠状态
-          const path = target.getAttribute('data-path')
-          if (path) {
-            collapsedNodes.set(path, !isCollapsed)
+          // 如果兄弟元素中包含ul/ol,也查找它
+          const nested = elem.querySelector('ul, ol') as HTMLElement
+          if (nested) {
+            childList = nested
+            break
           }
+        }
+        sibling = sibling.nextSibling
+      }
+      
+      // 如果没找到,从父元素查找(用于顶层的情况)
+      if (!childList) {
+        childList = parent.querySelector('ul, ol') as HTMLElement
+      }
+      
+      if (childList) {
+        const isCollapsed = childList.style.display === 'none'
+        childList.style.display = isCollapsed ? 'block' : 'none'
+        
+        if (isCollapsed) {
+          target.classList.remove('collapsed')
+        } else {
+          target.classList.add('collapsed')
+        }
+        
+        // 缓存折叠状态
+        const path = target.getAttribute('data-path')
+        if (path) {
+          collapsedNodes.set(path, !isCollapsed)
         }
       }
     })
@@ -543,8 +779,24 @@ function toggleUrlDecodeMode() {
   formattedHtml.value = ''
   decodedResult.value = ''
   error.value = ''
+  flattenStats.value = null
+  // URL解码模式下禁用扁平化
+  if (isUrlDecodeMode.value) {
+    isFlattenMode.value = false
+  }
   // 保存到localStorage
   localStorage.setItem('jsonFormatter-urlDecodeMode', isUrlDecodeMode.value.toString())
+}
+
+// 扁平化模式切换
+function toggleFlattenMode() {
+  isFlattenMode.value = !isFlattenMode.value
+  // 保存到localStorage
+  localStorage.setItem('jsonFormatter-flattenMode', isFlattenMode.value.toString())
+  // 重新处理当前JSON
+  if (inputJson.value.trim()) {
+    onInputChange()
+  }
 }
 
 // 开始拖拽调整
@@ -608,6 +860,12 @@ function initializeSettings() {
   const savedUrlDecodeMode = localStorage.getItem('jsonFormatter-urlDecodeMode')
   if (savedUrlDecodeMode !== null) {
     isUrlDecodeMode.value = savedUrlDecodeMode === 'true'
+  }
+  
+  // 读取扁平化模式设置
+  const savedFlattenMode = localStorage.getItem('jsonFormatter-flattenMode')
+  if (savedFlattenMode !== null) {
+    isFlattenMode.value = savedFlattenMode === 'true'
   }
 }
 
@@ -867,6 +1125,11 @@ onMounted(() => {
 .stat-item {
   color: #666;
   font-size: 12px;
+}
+
+.stat-flatten {
+  color: #28a745;
+  font-weight: 600;
 }
 
 /* JSON样式 */

@@ -12,7 +12,7 @@ export interface FieldMapping {
   trackId?: string
   InPath?: string  // 网关API路径字段
   TimePeriod?: string  // 响应时间字段(毫秒)
-
+}
 // 可用索引接口
 export interface AvailableIndex {
   key: string
