@@ -21,12 +21,29 @@
         <button @click="toggleUrlDecodeMode" class="btn" :class="{ 'btn-active': isUrlDecodeMode }" title="URL解码模式">
           🔗
         </button>
-        <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode" title="扁平化嵌套JSON">
+        <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode" title="扁平化模式：将嵌套结构转为键值对形式（默认已自动深度解析嵌套JSON）">
           ⬇️
         </button>
         <button @click="toggleDarkMode" class="btn btn-theme" :title="isDarkMode ? '切换到亮色模式' : '切换到暗夜模式'">
           {{ isDarkMode ? '☀️' : '🌙' }}
         </button>
+
+        <!-- 搜索框 -->
+        <div class="search-box" v-if="formattedJson && !isUrlDecodeMode">
+          <input
+            type="text"
+            v-model="searchQuery"
+            @input="performSearch"
+            placeholder="搜索字段名或值..."
+            class="search-input"
+          />
+          <span v-if="searchMatchCount > 0" class="search-count">
+            {{ currentMatchIndex + 1 }}/{{ searchMatchCount }}
+          </span>
+          <button @click="navigateSearch(-1)" class="btn-search-nav" :disabled="searchMatchCount === 0" title="上一个">▲</button>
+          <button @click="navigateSearch(1)" class="btn-search-nav" :disabled="searchMatchCount === 0" title="下一个">▼</button>
+          <button @click="clearSearch" class="btn-search-clear" v-if="searchQuery" title="清除搜索">✕</button>
+        </div>
 
       </div>
       
@@ -127,6 +144,11 @@ const decodedResult = ref('')
 const isFlattenMode = ref(false)
 const flattenStats = ref<{ original: number; flattened: number } | null>(null)
 
+// 搜索功能
+const searchQuery = ref('')
+const searchMatchCount = ref(0)
+const currentMatchIndex = ref(0)
+
 // 性能优化：节点折叠状态缓存
 const collapsedNodes = new Map<string, boolean>()
 const nodeDepth = new Map<string, number>()
@@ -194,34 +216,82 @@ function isJsonString(str: string): boolean {
   return true
 }
 
-// 扁平化嵌套JSON - 性能优化版本
+// 深度解析嵌套JSON - 递归解析所有JSON字符串，保持树形结构
+function deepParseJSON(data: any, depth = 0, seen = new WeakSet()): any {
+  // 防止无限递归
+  if (depth > MAX_FLATTEN_DEPTH) return data
+
+  // 处理null和undefined
+  if (data === null || data === undefined) return data
+
+  // 处理字符串 - 尝试解析JSON
+  if (typeof data === 'string') {
+    if (isJsonString(data)) {
+      try {
+        const parsed = JSON.parse(data)
+        // 如果解析成功且是对象或数组，继续递归解析
+        if (typeof parsed === 'object' && parsed !== null) {
+          return deepParseJSON(parsed, depth + 1, seen)
+        }
+        return parsed
+      } catch (e) {
+        // 解析失败，返回原始字符串
+        return data
+      }
+    }
+    return data
+  }
+
+  // 处理数组
+  if (Array.isArray(data)) {
+    return data.map(item => deepParseJSON(item, depth + 1, seen))
+  }
+
+  // 处理对象
+  if (typeof data === 'object') {
+    // 循环引用检测
+    if (seen.has(data)) return '[Circular Reference]'
+    seen.add(data)
+
+    const result: Record<string, any> = {}
+    for (const key of Object.keys(data)) {
+      result[key] = deepParseJSON(data[key], depth + 1, seen)
+    }
+    return result
+  }
+
+  // 其他基本类型直接返回
+  return data
+}
+
+// 扁平化嵌套JSON - 性能优化版本（保留旧功能）
 function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any> {
   const result: Record<string, any> = {}
   let nodeCount = 0
-  
+
   // 循环引用检测
   const seen = new WeakSet()
-  
+
   function flatten(obj: any, path: string, currentDepth: number): void {
     // 性能保护: 深度限制
     if (currentDepth > MAX_FLATTEN_DEPTH) {
       result[path] = '[Max depth reached]'
       return
     }
-    
+
     // 性能保护: 节点数量限制
     if (nodeCount > MAX_FLATTEN_NODES) {
       result[path] = '[Max nodes limit reached]'
       return
     }
-    
+
     // 处理null和undefined
     if (obj === null || obj === undefined) {
       result[path] = obj
       nodeCount++
       return
     }
-    
+
     // 处理字符串类型 - 检测是否是JSON字符串
     if (typeof obj === 'string') {
       // 尝试检测并解析JSON字符串
@@ -242,7 +312,7 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
       nodeCount++
       return
     }
-    
+
     // 处理数组
     if (Array.isArray(obj)) {
       // 空数组直接赋值
@@ -251,11 +321,11 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
         nodeCount++
         return
       }
-      
+
       // 遍历数组元素
       obj.forEach((item, index) => {
         const arrayPath = `${path}[${index}]`
-        
+
         if (item === null || item === undefined) {
           result[arrayPath] = item
           nodeCount++
@@ -283,7 +353,7 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
             return
           }
           seen.add(item)
-          
+
           // 递归处理对象或数组
           flatten(item, arrayPath, currentDepth + 1)
         } else {
@@ -292,7 +362,7 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
           nodeCount++
         }
       })
-    } 
+    }
     // 处理对象
     else if (typeof obj === 'object') {
       // 循环引用检测
@@ -302,21 +372,21 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
         return
       }
       seen.add(obj)
-      
+
       const keys = Object.keys(obj)
-      
+
       // 空对象直接赋值
       if (keys.length === 0) {
         result[path] = {}
         nodeCount++
         return
       }
-      
+
       // 遍历对象属性
       keys.forEach(key => {
         const newPath = path ? `${path}.${key}` : key
         const value = obj[key]
-        
+
         if (value === null || value === undefined) {
           result[newPath] = value
           nodeCount++
@@ -345,16 +415,16 @@ function parseNestedJSON(data: any, prefix = '', depth = 0): Record<string, any>
           nodeCount++
         }
       })
-    } 
+    }
     // 其他基本类型 (number, boolean等)
     else {
       result[path] = obj
       nodeCount++
     }
   }
-  
+
   flatten(data, prefix, depth)
-  
+
   return result
 }
 
@@ -385,19 +455,15 @@ function getNodePath(path: string[], index: string | number): string {
   return [...path, index].join('.')
 }
 
-// 优化的HTML生成函数，支持懒加载和深度限制
+// 优化的HTML生成函数，默认全部展开
 function generateHtml(obj: any, depth: number = 0, path: string[] = [], totalNodes: number = 0): string {
   let html = ''
-  
-  // 判断是否为大数据集（只在顶层计算一次）
-  const isLargeData = totalNodes > LARGE_DATA_THRESHOLD
-  const shouldAutoCollapse = isLargeData && depth >= MAX_INITIAL_DEPTH
-  
+
   if (typeof obj === 'string') {
     const escaped = obj.replace(/&/g, '&amp;')
                       .replace(/</g, '&lt;')
                       .replace(/>/g, '&gt;')
-    
+
     if (isUrl(obj)) {
       html += `<a href="${obj}" class="json-literal-url" target="_blank">"${escaped}"</a>`
     } else {
@@ -412,31 +478,21 @@ function generateHtml(obj: any, depth: number = 0, path: string[] = [], totalNod
   } else if (Array.isArray(obj)) {
     if (obj.length > 0) {
       const arrayLength = obj.length
-      html += `[<span class="json-count">${arrayLength} items</span><ol class="json-array"${shouldAutoCollapse ? ' style="display: none;"' : ''}>`
-      
-      // 对于大数组，使用分批渲染
-      const batchSize = isLargeData ? 100 : obj.length
-      const shouldBatch = obj.length > batchSize && isLargeData
-      
-      for (let i = 0; i < Math.min(obj.length, shouldBatch ? batchSize : obj.length); i++) {
+      // 默认展开，不设置 display: none
+      html += `[<span class="json-count">${arrayLength} items</span><ol class="json-array">`
+
+      for (let i = 0; i < obj.length; i++) {
         const nodePath = getNodePath(path, i)
         html += '<li>'
         if (isComplex(obj[i])) {
-          const toggleClass = shouldAutoCollapse ? 'collapsed' : ''
-          html += `<a href="#" class="json-toggle ${toggleClass}" data-action="toggle" data-path="${nodePath}"></a>`
+          // 默认展开状态，不添加 collapsed 类
+          html += `<a href="#" class="json-toggle" data-action="toggle" data-path="${nodePath}"></a>`
         }
         html += generateHtml(obj[i], depth + 1, [...path, String(i)], totalNodes)
         if (i < obj.length - 1) {
           html += ','
         }
         html += '</li>'
-      }
-      
-      // 如果有更多项，添加"加载更多"按钮
-      if (shouldBatch && obj.length > batchSize) {
-        html += `<li class="load-more" data-path="${getNodePath(path, 'more')}" data-start="${batchSize}" data-total="${obj.length}">
-          <button class="btn-load-more">加载更多 (${obj.length - batchSize} 项)</button>
-        </li>`
       }
       
       html += '</ol>]'
@@ -446,45 +502,35 @@ function generateHtml(obj: any, depth: number = 0, path: string[] = [], totalNod
   } else if (typeof obj === 'object' && obj !== null) {
     const keys = Object.keys(obj)
     if (keys.length > 0) {
-      html += `{<span class="json-count">${keys.length} keys</span><ul class="json-dict"${shouldAutoCollapse ? ' style="display: none;"' : ''}>`
-      
-      // 对于大对象，使用分批渲染
-      const batchSize = isLargeData ? 50 : keys.length
-      const shouldBatch = keys.length > batchSize && isLargeData
-      
-      keys.slice(0, shouldBatch ? batchSize : keys.length).forEach((key, index) => {
+      // 默认展开，不设置 display: none
+      html += `{<span class="json-count">${keys.length} keys</span><ul class="json-dict">`
+
+      keys.forEach((key, index) => {
         const nodePath = getNodePath(path, key)
         html += '<li>'
         const keyDisplay = showQuotes.value ? `"${key}"` : key
-        
+
         if (isComplex(obj[key])) {
-          const toggleClass = shouldAutoCollapse ? 'collapsed' : ''
-          html += `<a href="#" class="json-toggle ${toggleClass}" data-action="toggle" data-path="${nodePath}">${keyDisplay}</a>`
+          // 默认展开状态，不添加 collapsed 类
+          html += `<a href="#" class="json-toggle" data-action="toggle" data-path="${nodePath}">${keyDisplay}</a>`
         } else {
           html += `<span class="property">${keyDisplay}</span>`
         }
-        
+
         html += ': ' + generateHtml(obj[key], depth + 1, [...path, key], totalNodes)
-        
-        if (index < (shouldBatch ? batchSize : keys.length) - 1 || (shouldBatch && keys.length > batchSize)) {
+
+        if (index < keys.length - 1) {
           html += ','
         }
         html += '</li>'
       })
-      
-      // 如果有更多键，添加"加载更多"按钮
-      if (shouldBatch && keys.length > batchSize) {
-        html += `<li class="load-more" data-path="${getNodePath(path, 'more')}" data-start="${batchSize}" data-total="${keys.length}">
-          <button class="btn-load-more">加载更多 (${keys.length - batchSize} 项)</button>
-        </li>`
-      }
-      
+
       html += '</ul>}'
     } else {
       html += '{}'
     }
   }
-  
+
   return html
 }
 
@@ -512,25 +558,26 @@ function onInputChange() {
     // JSON格式化模式
     try {
       const parsed = JSON.parse(inputJson.value)
-      
+
       // 如果启用了扁平化模式,进行扁平化处理
       if (isFlattenMode.value) {
         const originalNodeCount = countNodes(parsed)
         const flattened = parseNestedJSON(parsed)
         const flattenedNodeCount = Object.keys(flattened).length
-        
+
         // 更新统计信息
         flattenStats.value = {
           original: originalNodeCount,
           flattened: flattenedNodeCount
         }
-        
+
         formattedJson.value = flattened
       } else {
         flattenStats.value = null
-        formattedJson.value = parsed
+        // 默认使用深度解析，递归解析所有嵌套的JSON字符串
+        formattedJson.value = deepParseJSON(parsed)
       }
-      
+
       error.value = '' // 清除之前的错误
       updateDisplay()
     } catch (e) {
@@ -591,21 +638,26 @@ function updateDisplay() {
 // 点击处理 - 优化版，使用事件委托和requestAnimationFrame
 function handleClick(event: Event) {
   const target = event.target as HTMLElement
-  
+
   // 处理折叠/展开
   if (target.classList.contains('json-toggle')) {
     event.preventDefault()
-    
+
     // 使用requestAnimationFrame优化性能
     requestAnimationFrame(() => {
+      // 单独展开节点时，移除全部折叠的 CSS class
+      if (jsonOutput.value?.classList.contains('all-collapsed')) {
+        jsonOutput.value.classList.remove('all-collapsed')
+        isCollapsed.value = false
+      }
+
       // 改进的选择器逻辑: 找到toggle后面的ul或ol元素
-      // 方法1: 从父元素中查找所有的ul/ol,选择距离toggle最近的一个
       const parent = target.parentElement
       if (!parent) return
-      
+
       // 查找当前li/div下的第一个ul或ol(包括深层嵌套的)
       let childList: HTMLElement | null = null
-      
+
       // 先尝试找紧邻的兄弟元素中的ul/ol
       let sibling = target.nextSibling
       while (sibling) {
@@ -624,31 +676,31 @@ function handleClick(event: Event) {
         }
         sibling = sibling.nextSibling
       }
-      
+
       // 如果没找到,从父元素查找(用于顶层的情况)
       if (!childList) {
         childList = parent.querySelector('ul, ol') as HTMLElement
       }
-      
+
       if (childList) {
-        const isCollapsed = childList.style.display === 'none'
-        childList.style.display = isCollapsed ? 'block' : 'none'
-        
-        if (isCollapsed) {
+        const isNodeCollapsed = childList.style.display === 'none'
+        childList.style.display = isNodeCollapsed ? 'block' : 'none'
+
+        if (isNodeCollapsed) {
           target.classList.remove('collapsed')
         } else {
           target.classList.add('collapsed')
         }
-        
+
         // 缓存折叠状态
         const path = target.getAttribute('data-path')
         if (path) {
-          collapsedNodes.set(path, !isCollapsed)
+          collapsedNodes.set(path, !isNodeCollapsed)
         }
       }
     })
   }
-  
+
   // 处理"加载更多"按钮
   if (target.classList.contains('btn-load-more')) {
     event.preventDefault()
@@ -659,7 +711,7 @@ function handleClick(event: Event) {
       (loadMoreLi as HTMLElement).style.display = 'none'
     }
   }
-  
+
   // 处理属性点击选择
   if (target.classList.contains('property')) {
     // 清除之前的选择
@@ -674,48 +726,45 @@ function handleClick(event: Event) {
   }
 }
 
-// 全部折叠/展开 - 优化版，使用分批处理避免卡顿
+// 全部折叠/展开 - 优化版，使用分批处理和 CSS class 避免卡顿
 function toggleCollapse() {
   if (!jsonOutput.value) return
-  
-  const toggles = Array.from(jsonOutput.value.querySelectorAll('.json-toggle')) as Element[]
-  const lists = Array.from(jsonOutput.value.querySelectorAll('ul, ol')) as Element[]
-  
-  const batchSize = 50 // 每批处理50个元素
+
   const targetState = !isCollapsed.value
-  
-  // 分批处理函数
-  function processBatch(items: Element[], startIndex: number, processor: (item: Element) => void) {
-    const endIndex = Math.min(startIndex + batchSize, items.length)
-    
-    for (let i = startIndex; i < endIndex; i++) {
-      processor(items[i])
-    }
-    
-    if (endIndex < items.length) {
-      // 使用requestAnimationFrame继续处理下一批
-      requestAnimationFrame(() => processBatch(items, endIndex, processor))
-    }
-  }
-  
+
+  // 使用 CSS class 批量切换，避免逐个修改 style
   if (targetState) {
-    // 折叠全部
-    processBatch(lists, 0, (list) => {
-      (list as HTMLElement).style.display = 'none'
-    })
-    processBatch(toggles, 0, (toggle) => {
-      toggle.classList.add('collapsed')
-    })
+    jsonOutput.value.classList.add('all-collapsed')
   } else {
-    // 展开全部
-    processBatch(lists, 0, (list) => {
-      (list as HTMLElement).style.display = 'block'
-    })
-    processBatch(toggles, 0, (toggle) => {
-      toggle.classList.remove('collapsed')
-    })
+    jsonOutput.value.classList.remove('all-collapsed')
   }
-  
+
+  // 更新 toggle 按钮状态 - 使用分批处理避免卡顿
+  const toggles = Array.from(jsonOutput.value.querySelectorAll('.json-toggle')) as Element[]
+  const batchSize = 200 // 增加批处理大小
+
+  function processBatch(startIndex: number) {
+    const endIndex = Math.min(startIndex + batchSize, toggles.length)
+
+    for (let i = startIndex; i < endIndex; i++) {
+      if (targetState) {
+        toggles[i].classList.add('collapsed')
+      } else {
+        toggles[i].classList.remove('collapsed')
+      }
+    }
+
+    if (endIndex < toggles.length) {
+      // 使用 requestIdleCallback 或 requestAnimationFrame
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(() => processBatch(endIndex), { timeout: 50 })
+      } else {
+        requestAnimationFrame(() => processBatch(endIndex))
+      }
+    }
+  }
+
+  processBatch(0)
   isCollapsed.value = targetState
 }
 
@@ -730,6 +779,106 @@ function clearInput() {
   // 清理性能优化缓存
   collapsedNodes.clear()
   nodeDepth.clear()
+}
+
+// 搜索功能 - 执行搜索
+function performSearch() {
+  if (!jsonOutput.value || !searchQuery.value.trim()) {
+    clearSearchHighlights()
+    searchMatchCount.value = 0
+    currentMatchIndex.value = 0
+    return
+  }
+
+  const query = searchQuery.value.toLowerCase()
+
+  // 清除之前的高亮
+  clearSearchHighlights()
+
+  // 查找所有匹配的元素
+  const allElements = jsonOutput.value.querySelectorAll('.json-toggle, .property, .json-literal-string, .json-literal-numeric, .json-literal-boolean, .json-literal, .json-literal-url')
+  const matches: Element[] = []
+
+  allElements.forEach((el: Element) => {
+    const text = el.textContent?.toLowerCase() || ''
+    if (text.includes(query)) {
+      el.classList.add('search-match')
+      matches.push(el)
+    }
+  })
+
+  searchMatchCount.value = matches.length
+  currentMatchIndex.value = 0
+
+  // 滚动到第一个匹配项
+  if (matches.length > 0) {
+    scrollToMatch(matches[0])
+    matches[0].classList.add('search-current')
+  }
+}
+
+// 清除搜索高亮
+function clearSearchHighlights() {
+  if (!jsonOutput.value) return
+  jsonOutput.value.querySelectorAll('.search-match').forEach((el: Element) => {
+    el.classList.remove('search-match', 'search-current')
+  })
+}
+
+// 导航搜索结果
+function navigateSearch(direction: number) {
+  if (!jsonOutput.value || searchMatchCount.value === 0) return
+
+  const matches = jsonOutput.value.querySelectorAll('.search-match')
+  if (matches.length === 0) return
+
+  // 移除当前高亮
+  matches[currentMatchIndex.value]?.classList.remove('search-current')
+
+  // 计算新索引
+  currentMatchIndex.value = (currentMatchIndex.value + direction + matches.length) % matches.length
+
+  // 添加当前高亮并滚动
+  const currentMatch = matches[currentMatchIndex.value]
+  currentMatch.classList.add('search-current')
+  scrollToMatch(currentMatch)
+
+  // 确保父节点展开
+  expandParentNodes(currentMatch)
+}
+
+// 滚动到匹配项
+function scrollToMatch(element: Element) {
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+// 展开匹配项的父节点
+function expandParentNodes(element: Element) {
+  let parent = element.parentElement
+  while (parent && parent !== jsonOutput.value) {
+    if (parent.tagName === 'UL' || parent.tagName === 'OL') {
+      parent.style.display = 'block'
+      // 找到对应的 toggle 按钮并移除 collapsed 类
+      const prevSibling = parent.previousElementSibling
+      if (prevSibling?.classList.contains('json-toggle')) {
+        prevSibling.classList.remove('collapsed')
+      }
+    }
+    parent = parent.parentElement
+  }
+  // 移除全局折叠状态
+  if (jsonOutput.value?.classList.contains('all-collapsed')) {
+    jsonOutput.value.classList.remove('all-collapsed')
+    isCollapsed.value = false
+  }
+}
+
+// 清除搜索
+function clearSearch() {
+  searchQuery.value = ''
+  searchMatchCount.value = 0
+  currentMatchIndex.value = 0
+  clearSearchHighlights()
 }
 
 // 复制到剪贴板
@@ -898,6 +1047,69 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* 搜索框样式 */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding-left: 8px;
+  border-left: 1px solid #e1e5e9;
+}
+
+.search-input {
+  width: 180px;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: #007bff;
+}
+
+.search-count {
+  font-size: 12px;
+  color: #666;
+  min-width: 40px;
+  text-align: center;
+}
+
+.btn-search-nav {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  background: #f8f9fa;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.btn-search-nav:hover:not(:disabled) {
+  background: #e9ecef;
+}
+
+.btn-search-nav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-search-clear {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #999;
+}
+
+.btn-search-clear:hover {
+  color: #333;
 }
 
 .main-content {
@@ -1186,17 +1398,41 @@ onMounted(() => {
 :deep(.json-array), :deep(.json-dict) {
   margin: 0;
   padding-left: 20px;
+  /* 性能优化：使用 contain 限制重绘范围 */
+  contain: layout style;
+}
+
+/* 全部折叠时使用 CSS 批量隐藏，性能更好 */
+.json-output.all-collapsed :deep(.json-array),
+.json-output.all-collapsed :deep(.json-dict) {
+  display: none !important;
 }
 
 :deep(.json-array li), :deep(.json-dict li) {
   list-style: none;
   margin: 2px 0;
+  /* 性能优化：使用 contain 限制重绘范围 */
+  contain: layout style;
 }
 
 :deep(li.copyable) {
   background-color: #fff3cd;
   border-radius: 3px;
   padding: 2px 4px;
+}
+
+/* 搜索匹配高亮样式 */
+:deep(.search-match) {
+  background-color: #ffeb3b;
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+:deep(.search-current) {
+  background-color: #ff9800;
+  color: #fff;
+  border-radius: 2px;
+  padding: 1px 2px;
 }
 
 /* 节点计数样式 */
@@ -1288,6 +1524,54 @@ onMounted(() => {
   background: #3c3c3c;
   color: #d4d4d4;
   border: 1px solid #4a4a4a;
+}
+
+/* 暗夜模式下的搜索框样式 */
+.json-formatter.dark-mode .search-box {
+  border-left-color: #4a4a4a;
+}
+
+.json-formatter.dark-mode .search-input {
+  background: #2d2d2d;
+  border-color: #4a4a4a;
+  color: #d4d4d4;
+}
+
+.json-formatter.dark-mode .search-input:focus {
+  border-color: #007bff;
+}
+
+.json-formatter.dark-mode .search-count {
+  color: #9ca3af;
+}
+
+.json-formatter.dark-mode .btn-search-nav {
+  background: #3c3c3c;
+  border-color: #4a4a4a;
+  color: #d4d4d4;
+}
+
+.json-formatter.dark-mode .btn-search-nav:hover:not(:disabled) {
+  background: #484848;
+}
+
+.json-formatter.dark-mode .btn-search-clear {
+  color: #6a6a6a;
+}
+
+.json-formatter.dark-mode .btn-search-clear:hover {
+  color: #d4d4d4;
+}
+
+/* 暗夜模式下的搜索高亮 */
+.json-formatter.dark-mode :deep(.search-match) {
+  background-color: #5c4b00;
+  color: #fff;
+}
+
+.json-formatter.dark-mode :deep(.search-current) {
+  background-color: #ff9800;
+  color: #000;
 }
 
 .json-formatter.dark-mode .btn:hover:not(:disabled) {
