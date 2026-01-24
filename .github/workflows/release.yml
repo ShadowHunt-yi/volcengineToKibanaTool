@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@8
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build extension
+        run: pnpm run build:extension
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create ZIP archive
+        run: |
+          cd dist
+          zip -r ../tool517-extension-${{ steps.get_version.outputs.VERSION }}.zip .
+          cd ..
+          ls -la tool517-extension-*.zip
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## 517工具浏览器扩展 ${{ steps.get_version.outputs.VERSION }}
+
+            ### 安装方式
+            1. 下载下方的 `tool517-extension-${{ steps.get_version.outputs.VERSION }}.zip`
+            2. 解压到任意目录
+            3. 打开 Chrome 扩展管理页面 `chrome://extensions/`
+            4. 开启"开发者模式"
+            5. 点击"加载已解压的扩展程序"
+            6. 选择解压后的目录
+
+            ### 更新日志
+            查看 README.md 获取详细更新内容。
+          files: |
+            tool517-extension-${{ steps.get_version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false
