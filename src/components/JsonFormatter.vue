@@ -1,7 +1,17 @@
 <template>
-  <div class="json-formatter" :class="{ 'dark-mode': isDarkMode }">
+  <div class="json-formatter" :class="themeClass">
+    <!-- 悬浮球 - 工具栏收起时显示 -->
+    <div
+      v-if="isToolbarCollapsed"
+      class="floating-ball"
+      @click="toggleToolbar"
+      title="展开工具栏"
+    >
+      <span class="ball-icon">⚙️</span>
+    </div>
+
     <!-- 工具栏 -->
-    <div class="toolbar">
+    <div class="toolbar" :class="{ 'toolbar-hidden': isToolbarCollapsed }">
       <div class="toolbar-actions">
         <button @click="clearInput" class="btn btn-secondary">清空</button>
         <button @click="pasteFromClipboard" class="btn btn-secondary">粘贴</button>
@@ -24,8 +34,11 @@
         <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode" title="扁平化模式：将嵌套结构转为键值对形式（默认已自动深度解析嵌套JSON）">
           ⬇️
         </button>
-        <button @click="toggleDarkMode" class="btn btn-theme" :title="isDarkMode ? '切换到亮色模式' : '切换到暗夜模式'">
-          {{ isDarkMode ? '☀️' : '🌙' }}
+        <button @click="cycleTheme" class="btn btn-theme" :title="themeTitle">
+          {{ themeIcon }}
+        </button>
+        <button @click="toggleToolbar" class="btn btn-collapse" title="收起工具栏">
+          📌
         </button>
 
         <!-- 搜索框 -->
@@ -133,8 +146,36 @@ const jsonOutput = ref<HTMLElement>()
 
 // 暗夜模式和面板大小
 const isDarkMode = ref(false)
+const currentTheme = ref<'light' | 'dark' | 'hacker'>('light') // 三种主题
+const isToolbarCollapsed = ref(false) // 工具栏折叠状态
 const leftPanelWidth = ref(500) // 默认左侧面板宽度，给拖拽留出更多空间
 const isResizing = ref(false)
+
+// 主题相关计算属性
+const themeClass = computed(() => {
+  return {
+    'dark-mode': currentTheme.value === 'dark',
+    'hacker-mode': currentTheme.value === 'hacker'
+  }
+})
+
+const themeIcon = computed(() => {
+  switch (currentTheme.value) {
+    case 'light': return '🌙'
+    case 'dark': return '💚'
+    case 'hacker': return '☀️'
+    default: return '🌙'
+  }
+})
+
+const themeTitle = computed(() => {
+  switch (currentTheme.value) {
+    case 'light': return '切换到暗夜模式'
+    case 'dark': return '切换到黑客模式'
+    case 'hacker': return '切换到亮色模式'
+    default: return '切换主题'
+  }
+})
 
 // URL解码模式
 const isUrlDecodeMode = ref(false)
@@ -912,11 +953,21 @@ async function pasteFromClipboard() {
   }
 }
 
-// 暗夜模式切换
-function toggleDarkMode() {
-  isDarkMode.value = !isDarkMode.value
+// 主题循环切换
+function cycleTheme() {
+  const themes: Array<'light' | 'dark' | 'hacker'> = ['light', 'dark', 'hacker']
+  const currentIndex = themes.indexOf(currentTheme.value)
+  currentTheme.value = themes[(currentIndex + 1) % themes.length]
+  // 保持 isDarkMode 兼容性
+  isDarkMode.value = currentTheme.value !== 'light'
   // 保存到localStorage
-  localStorage.setItem('jsonFormatter-darkMode', isDarkMode.value.toString())
+  localStorage.setItem('jsonFormatter-theme', currentTheme.value)
+}
+
+// 工具栏折叠切换
+function toggleToolbar() {
+  isToolbarCollapsed.value = !isToolbarCollapsed.value
+  localStorage.setItem('jsonFormatter-toolbarCollapsed', isToolbarCollapsed.value.toString())
 }
 
 // URL解码模式切换
@@ -993,24 +1044,38 @@ function startResize(event: MouseEvent) {
 
 // 初始化设置
 function initializeSettings() {
-  // 读取暗夜模式设置
-  const savedDarkMode = localStorage.getItem('jsonFormatter-darkMode')
-  if (savedDarkMode !== null) {
-    isDarkMode.value = savedDarkMode === 'true'
+  // 读取主题设置
+  const savedTheme = localStorage.getItem('jsonFormatter-theme') as 'light' | 'dark' | 'hacker' | null
+  if (savedTheme && ['light', 'dark', 'hacker'].includes(savedTheme)) {
+    currentTheme.value = savedTheme
+    isDarkMode.value = savedTheme !== 'light'
+  } else {
+    // 兼容旧的 darkMode 设置
+    const savedDarkMode = localStorage.getItem('jsonFormatter-darkMode')
+    if (savedDarkMode === 'true') {
+      currentTheme.value = 'dark'
+      isDarkMode.value = true
+    }
   }
-  
+
+  // 读取工具栏折叠状态
+  const savedToolbarCollapsed = localStorage.getItem('jsonFormatter-toolbarCollapsed')
+  if (savedToolbarCollapsed !== null) {
+    isToolbarCollapsed.value = savedToolbarCollapsed === 'true'
+  }
+
   // 读取面板宽度设置
   const savedWidth = localStorage.getItem('jsonFormatter-panelWidth')
   if (savedWidth !== null) {
     leftPanelWidth.value = parseInt(savedWidth, 10)
   }
-  
+
   // 读取URL解码模式设置
   const savedUrlDecodeMode = localStorage.getItem('jsonFormatter-urlDecodeMode')
   if (savedUrlDecodeMode !== null) {
     isUrlDecodeMode.value = savedUrlDecodeMode === 'true'
   }
-  
+
   // 读取扁平化模式设置
   const savedFlattenMode = localStorage.getItem('jsonFormatter-flattenMode')
   if (savedFlattenMode !== null) {
@@ -1031,6 +1096,7 @@ onMounted(() => {
   flex-direction: column;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f8f9fa;
+  overflow: hidden; /* 防止内容溢出导致body滚动条 */
 }
 
 .toolbar {
@@ -1041,6 +1107,54 @@ onMounted(() => {
   background: white;
   border-bottom: 1px solid #e1e5e9;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  flex-shrink: 0; /* 防止工具栏被压缩 */
+}
+
+.toolbar-hidden {
+  display: none; /* 使用display:none完全移除，避免影响布局 */
+}
+
+/* 悬浮球样式 */
+.floating-ball {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  animation: float 3s ease-in-out infinite;
+}
+
+.floating-ball:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.floating-ball:active {
+  transform: scale(0.95);
+}
+
+.ball-icon {
+  font-size: 24px;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.btn-collapse {
+  background: #e9ecef;
+  color: #495057;
 }
 
 .toolbar-actions {
@@ -1137,6 +1251,7 @@ onMounted(() => {
   padding: 12px 16px;
   background: #f8f9fa;
   border-bottom: 1px solid #e1e5e9;
+  flex-shrink: 0; /* 防止被压缩 */
 }
 
 .panel-header h3 {
@@ -1268,6 +1383,8 @@ onMounted(() => {
   resize: none;
   outline: none;
   background: #fafafa;
+  min-height: 0; /* 允许flex子项缩小 */
+  box-sizing: border-box;
 }
 
 .json-input:focus {
@@ -1276,8 +1393,9 @@ onMounted(() => {
 
 .json-output-container {
   flex: 1;
-  overflow: auto;
+  overflow: hidden; /* 改为hidden，让内部json-output处理滚动 */
   background: #fafafa;
+  min-height: 0; /* 允许flex子项缩小 */
 }
 
 .placeholder {
@@ -1324,6 +1442,7 @@ onMounted(() => {
   background: #fff;
   height: 100%;
   overflow: auto;
+  box-sizing: border-box; /* 确保padding不会增加高度 */
 }
 
 .stats {
@@ -1596,6 +1715,21 @@ onMounted(() => {
   background: #059669;
 }
 
+.json-formatter.dark-mode .btn-collapse {
+  background: #3c3c3c;
+  color: #d4d4d4;
+}
+
+/* 暗夜模式下的悬浮球 */
+.json-formatter.dark-mode .floating-ball {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+}
+
+.json-formatter.dark-mode .floating-ball:hover {
+  box-shadow: 0 6px 20px rgba(139, 92, 246, 0.6);
+}
+
 .json-formatter.dark-mode .url-decode-content {
   color: #d4d4d4;
 }
@@ -1656,6 +1790,265 @@ onMounted(() => {
 .json-formatter.dark-mode :deep(.btn-load-more:hover) {
   background: #484848;
   border-color: #5a5a5a;
+}
+
+/* ========== 黑客主题样式 (Hacker Mode) ========== */
+.json-formatter.hacker-mode {
+  background: #17202a;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .toolbar {
+  background: #1a252f;
+  border-bottom-color: #2c3e50;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.json-formatter.hacker-mode .panel-header {
+  background: #1a252f;
+  border-bottom-color: #2c3e50;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .panel-header h3 {
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .input-panel,
+.json-formatter.hacker-mode .output-panel {
+  background: #17202a;
+}
+
+.json-formatter.hacker-mode .json-input {
+  background: #17202a;
+  color: #43d397;
+  font-weight: bold;
+  line-height: 1.8;
+}
+
+.json-formatter.hacker-mode .json-input::placeholder {
+  color: #2ecc71;
+  opacity: 0.5;
+}
+
+.json-formatter.hacker-mode .json-input:focus {
+  background: #1a252f;
+}
+
+.json-formatter.hacker-mode .json-output-container {
+  background: #17202a;
+}
+
+.json-formatter.hacker-mode .json-output {
+  background: #17202a;
+  color: #43d397;
+  font-weight: bold;
+  line-height: 1.8;
+}
+
+.json-formatter.hacker-mode .placeholder {
+  color: #2ecc71;
+  opacity: 0.6;
+}
+
+.json-formatter.hacker-mode .divider-handle {
+  background: #2c3e50;
+}
+
+.json-formatter.hacker-mode .divider.resizable:hover {
+  background: rgba(67, 211, 151, 0.1);
+}
+
+.json-formatter.hacker-mode .divider-dots span {
+  background: #43d397;
+}
+
+.json-formatter.hacker-mode .btn {
+  background: #1a252f;
+  color: #43d397;
+  border: 1px solid #2c3e50;
+}
+
+.json-formatter.hacker-mode .btn:hover:not(:disabled) {
+  background: #2c3e50;
+  border-color: #43d397;
+}
+
+.json-formatter.hacker-mode .btn-secondary {
+  background: #1a252f;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .btn-secondary:hover {
+  background: #2c3e50;
+}
+
+.json-formatter.hacker-mode .btn-theme {
+  background: #27ae60;
+  border: none;
+  color: #17202a;
+}
+
+.json-formatter.hacker-mode .btn-theme:hover {
+  background: #2ecc71;
+}
+
+.json-formatter.hacker-mode .btn-active {
+  background: #27ae60;
+  border: none;
+  color: #17202a;
+}
+
+.json-formatter.hacker-mode .btn-active:hover {
+  background: #2ecc71;
+}
+
+.json-formatter.hacker-mode .btn-collapse {
+  background: #1a252f;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .checkbox-label {
+  color: #43d397;
+}
+
+/* 黑客主题下的搜索框样式 */
+.json-formatter.hacker-mode .search-box {
+  border-left-color: #2c3e50;
+}
+
+.json-formatter.hacker-mode .search-input {
+  background: #1a252f;
+  border-color: #2c3e50;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .search-input::placeholder {
+  color: #2ecc71;
+  opacity: 0.5;
+}
+
+.json-formatter.hacker-mode .search-input:focus {
+  border-color: #43d397;
+}
+
+.json-formatter.hacker-mode .search-count {
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .btn-search-nav {
+  background: #1a252f;
+  border-color: #2c3e50;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .btn-search-nav:hover:not(:disabled) {
+  background: #2c3e50;
+}
+
+.json-formatter.hacker-mode .btn-search-clear {
+  color: #43d397;
+  opacity: 0.6;
+}
+
+.json-formatter.hacker-mode .btn-search-clear:hover {
+  opacity: 1;
+}
+
+/* 黑客主题下的搜索高亮 */
+.json-formatter.hacker-mode :deep(.search-match) {
+  background-color: #27ae60;
+  color: #17202a;
+}
+
+.json-formatter.hacker-mode :deep(.search-current) {
+  background-color: #2ecc71;
+  color: #17202a;
+}
+
+.json-formatter.hacker-mode .url-decode-content {
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .stats {
+  color: #43d397;
+  opacity: 0.8;
+}
+
+.json-formatter.hacker-mode .stat-flatten {
+  color: #2ecc71;
+}
+
+.json-formatter.hacker-mode .error-message {
+  background: rgba(231, 76, 60, 0.2);
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+/* 黑客主题下的JSON语法高亮 */
+.json-formatter.hacker-mode :deep(.json-literal-string) {
+  color: #58d68d;
+}
+
+.json-formatter.hacker-mode :deep(.json-literal-numeric) {
+  color: #5dade2;
+}
+
+.json-formatter.hacker-mode :deep(.json-literal-boolean) {
+  color: #f39c12;
+}
+
+.json-formatter.hacker-mode :deep(.json-literal) {
+  color: #9b59b6;
+}
+
+.json-formatter.hacker-mode :deep(.json-literal-url) {
+  color: #3498db;
+}
+
+.json-formatter.hacker-mode :deep(.property) {
+  color: #43d397;
+  font-weight: bold;
+}
+
+.json-formatter.hacker-mode :deep(.json-toggle) {
+  color: #2ecc71;
+}
+
+.json-formatter.hacker-mode :deep(.json-toggle:hover) {
+  color: #58d68d;
+}
+
+.json-formatter.hacker-mode :deep(li.copyable) {
+  background-color: rgba(67, 211, 151, 0.15);
+}
+
+/* 黑客主题下的节点计数 */
+.json-formatter.hacker-mode :deep(.json-count) {
+  color: #43d397;
+  opacity: 0.6;
+}
+
+/* 黑客主题下的加载更多按钮 */
+.json-formatter.hacker-mode :deep(.btn-load-more) {
+  background: #1a252f;
+  border-color: #2c3e50;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode :deep(.btn-load-more:hover) {
+  background: #2c3e50;
+  border-color: #43d397;
+}
+
+/* 黑客主题下的悬浮球 */
+.json-formatter.hacker-mode .floating-ball {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+  box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+}
+
+.json-formatter.hacker-mode .floating-ball:hover {
+  box-shadow: 0 6px 20px rgba(46, 204, 113, 0.6);
 }
 
 @media (max-width: 768px) {
