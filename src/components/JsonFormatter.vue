@@ -31,7 +31,10 @@
         <button @click="toggleUrlDecodeMode" class="btn" :class="{ 'btn-active': isUrlDecodeMode }" title="URL解码模式">
           🔗
         </button>
-        <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode" title="扁平化模式：将嵌套结构转为键值对形式（默认已自动深度解析嵌套JSON）">
+        <button @click="toggleBase64Mode" class="btn" :class="{ 'btn-active': isBase64Mode }" title="Base64编解码模式">
+          🔐
+        </button>
+        <button @click="toggleFlattenMode" class="btn" :class="{ 'btn-active': isFlattenMode }" :disabled="isUrlDecodeMode || isBase64Mode" title="扁平化模式：将嵌套结构转为键值对形式（默认已自动深度解析嵌套JSON）">
           ⬇️
         </button>
         <button @click="cycleTheme" class="btn btn-theme" :title="themeTitle">
@@ -42,7 +45,7 @@
         </button>
 
         <!-- 搜索框 -->
-        <div class="search-box" v-if="formattedJson && !isUrlDecodeMode">
+        <div class="search-box" v-if="formattedJson && !isUrlDecodeMode && !isBase64Mode">
           <input
             type="text"
             v-model="searchQuery"
@@ -77,12 +80,25 @@
       <!-- 左侧输入区域 -->
       <div class="input-panel" :style="inputPanelStyle">
         <div class="panel-header">
-          <h3>{{ isUrlDecodeMode ? '输入 URL' : '输入 JSON' }}</h3>
+          <h3>{{ inputPanelTitle }}</h3>
+          <!-- Base64模式下显示编码/解码切换 -->
+          <div v-if="isBase64Mode" class="base64-switch">
+            <button
+              @click="base64Operation = 'decode'"
+              class="btn btn-small"
+              :class="{ 'btn-active': base64Operation === 'decode' }"
+            >解码</button>
+            <button
+              @click="base64Operation = 'encode'"
+              class="btn btn-small"
+              :class="{ 'btn-active': base64Operation === 'encode' }"
+            >编码</button>
+          </div>
         </div>
         <textarea
           v-model="inputJson"
           class="json-input"
-          :placeholder="isUrlDecodeMode ? '请输入或粘贴需要解码的URL...' : '请输入或粘贴JSON数据...'"
+          :placeholder="inputPlaceholder"
           @input="onInputChange"
         ></textarea>
         <div v-if="error" class="error-message">
@@ -109,22 +125,25 @@
       <!-- 右侧输出区域 -->
       <div class="output-panel">
         <div class="panel-header">
-          <h3>{{ isUrlDecodeMode ? '解码结果' : '格式化结果' }}</h3>
+          <h3>{{ outputPanelTitle }}</h3>
         </div>
         <div class="json-output-container">
-          <div 
-            v-if="isUrlDecodeMode ? decodedResult : formattedJson"
+          <div
+            v-if="hasOutput"
             ref="jsonOutput"
             class="json-output"
-            :class="{ 'url-decode-output': isUrlDecodeMode }"
+            :class="{ 'url-decode-output': isUrlDecodeMode || isBase64Mode }"
           >
             <div v-if="isUrlDecodeMode" class="url-decode-content">
               {{ decodedResult }}
             </div>
+            <div v-else-if="isBase64Mode" class="url-decode-content base64-content">
+              {{ base64Result }}
+            </div>
             <div v-else v-html="formattedHtml" @click="handleClick"></div>
           </div>
           <div v-else class="placeholder">
-            {{ isUrlDecodeMode ? '解码的URL将在此处显示...' : '格式化的JSON将在此处显示...' }}
+            {{ outputPlaceholder }}
           </div>
         </div>
       </div>
@@ -133,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 
 // 响应式数据
 const inputJson = ref('')
@@ -181,6 +200,11 @@ const themeTitle = computed(() => {
 const isUrlDecodeMode = ref(false)
 const decodedResult = ref('')
 
+// Base64编解码模式
+const isBase64Mode = ref(false)
+const base64Result = ref('')
+const base64Operation = ref<'encode' | 'decode'>('decode') // 默认解码
+
 // 扁平化模式
 const isFlattenMode = ref(false)
 const flattenStats = ref<{ original: number; flattened: number } | null>(null)
@@ -207,6 +231,65 @@ const inputPanelStyle = computed(() => {
   return {
     width: leftPanelWidth.value + 'px'
   }
+})
+
+// 输入面板标题
+const inputPanelTitle = computed(() => {
+  if (isBase64Mode.value) {
+    return base64Operation.value === 'encode' ? '输入文本' : '输入 Base64'
+  }
+  if (isUrlDecodeMode.value) {
+    return '输入 URL'
+  }
+  return '输入 JSON'
+})
+
+// 输入面板占位符
+const inputPlaceholder = computed(() => {
+  if (isBase64Mode.value) {
+    return base64Operation.value === 'encode'
+      ? '请输入需要编码为Base64的文本...'
+      : '请输入需要解码的Base64字符串...'
+  }
+  if (isUrlDecodeMode.value) {
+    return '请输入或粘贴需要解码的URL...'
+  }
+  return '请输入或粘贴JSON数据...'
+})
+
+// 输出面板标题
+const outputPanelTitle = computed(() => {
+  if (isBase64Mode.value) {
+    return base64Operation.value === 'encode' ? 'Base64编码结果' : '解码结果'
+  }
+  if (isUrlDecodeMode.value) {
+    return '解码结果'
+  }
+  return '格式化结果'
+})
+
+// 输出面板占位符
+const outputPlaceholder = computed(() => {
+  if (isBase64Mode.value) {
+    return base64Operation.value === 'encode'
+      ? 'Base64编码结果将在此处显示...'
+      : '解码结果将在此处显示...'
+  }
+  if (isUrlDecodeMode.value) {
+    return '解码的URL将在此处显示...'
+  }
+  return '格式化的JSON将在此处显示...'
+})
+
+// 是否有输出内容
+const hasOutput = computed(() => {
+  if (isBase64Mode.value) {
+    return !!base64Result.value
+  }
+  if (isUrlDecodeMode.value) {
+    return !!decodedResult.value
+  }
+  return !!formattedJson.value
 })
 
 // 统计信息
@@ -575,25 +658,54 @@ function generateHtml(obj: any, depth: number = 0, path: string[] = [], totalNod
   return html
 }
 
-// 输入变化处理 - 实时格式化或URL解码
+// 输入变化处理 - 实时格式化或URL解码或Base64编解码
 function onInputChange() {
   error.value = ''
   if (!inputJson.value.trim()) {
     if (isUrlDecodeMode.value) {
       decodedResult.value = ''
+    } else if (isBase64Mode.value) {
+      base64Result.value = ''
     } else {
       formattedJson.value = null
       formattedHtml.value = ''
     }
     return
   }
-  
+
   if (isUrlDecodeMode.value) {
     // URL解码模式
     try {
       decodedResult.value = decodeURIComponent(inputJson.value)
     } catch (e) {
       decodedResult.value = inputJson.value // 如果解码失败，显示原始内容
+    }
+  } else if (isBase64Mode.value) {
+    // Base64编解码模式
+    try {
+      if (base64Operation.value === 'encode') {
+        // 编码：文本 -> Base64 (支持UTF-8)
+        const encoder = new TextEncoder()
+        const data = encoder.encode(inputJson.value)
+        const binaryStr = Array.from(data).map(byte => String.fromCharCode(byte)).join('')
+        base64Result.value = btoa(binaryStr)
+        error.value = ''
+      } else {
+        // 解码：Base64 -> 文本 (支持UTF-8)
+        const binaryStr = atob(inputJson.value)
+        const bytes = Uint8Array.from(binaryStr, char => char.charCodeAt(0))
+        const decoder = new TextDecoder()
+        base64Result.value = decoder.decode(bytes)
+        error.value = ''
+      }
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e)
+      if (base64Operation.value === 'decode') {
+        error.value = `Base64解码失败: ${errorMessage}`
+      } else {
+        error.value = `Base64编码失败: ${errorMessage}`
+      }
+      base64Result.value = ''
     }
   } else {
     // JSON格式化模式
@@ -816,7 +928,8 @@ function clearInput() {
   formattedJson.value = null
   formattedHtml.value = ''
   decodedResult.value = ''
-  
+  base64Result.value = ''
+
   // 清理性能优化缓存
   collapsedNodes.clear()
   nodeDepth.clear()
@@ -925,15 +1038,18 @@ function clearSearch() {
 // 复制到剪贴板
 async function copyToClipboard() {
   let textToCopy = ''
-  
+
   if (isUrlDecodeMode.value) {
     if (!decodedResult.value) return
     textToCopy = decodedResult.value
+  } else if (isBase64Mode.value) {
+    if (!base64Result.value) return
+    textToCopy = base64Result.value
   } else {
     if (!formattedJson.value) return
     textToCopy = JSON.stringify(formattedJson.value, null, 2)
   }
-  
+
   try {
     await navigator.clipboard.writeText(textToCopy)
     // 这里可以添加提示消息
@@ -978,14 +1094,36 @@ function toggleUrlDecodeMode() {
   formattedJson.value = null
   formattedHtml.value = ''
   decodedResult.value = ''
+  base64Result.value = ''
   error.value = ''
   flattenStats.value = null
-  // URL解码模式下禁用扁平化
+  // URL解码模式下禁用扁平化和Base64
   if (isUrlDecodeMode.value) {
     isFlattenMode.value = false
+    isBase64Mode.value = false
   }
   // 保存到localStorage
   localStorage.setItem('jsonFormatter-urlDecodeMode', isUrlDecodeMode.value.toString())
+}
+
+// Base64编解码模式切换
+function toggleBase64Mode() {
+  isBase64Mode.value = !isBase64Mode.value
+  // 切换模式时清空内容和结果
+  inputJson.value = ''
+  formattedJson.value = null
+  formattedHtml.value = ''
+  decodedResult.value = ''
+  base64Result.value = ''
+  error.value = ''
+  flattenStats.value = null
+  // Base64模式下禁用扁平化和URL解码
+  if (isBase64Mode.value) {
+    isFlattenMode.value = false
+    isUrlDecodeMode.value = false
+  }
+  // 保存到localStorage
+  localStorage.setItem('jsonFormatter-base64Mode', isBase64Mode.value.toString())
 }
 
 // 扁平化模式切换
@@ -1076,12 +1214,25 @@ function initializeSettings() {
     isUrlDecodeMode.value = savedUrlDecodeMode === 'true'
   }
 
+  // 读取Base64模式设置
+  const savedBase64Mode = localStorage.getItem('jsonFormatter-base64Mode')
+  if (savedBase64Mode !== null) {
+    isBase64Mode.value = savedBase64Mode === 'true'
+  }
+
   // 读取扁平化模式设置
   const savedFlattenMode = localStorage.getItem('jsonFormatter-flattenMode')
   if (savedFlattenMode !== null) {
     isFlattenMode.value = savedFlattenMode === 'true'
   }
 }
+
+// 监听Base64操作模式变化，重新处理输入
+watch(base64Operation, () => {
+  if (isBase64Mode.value && inputJson.value.trim()) {
+    onInputChange()
+  }
+})
 
 // 组件挂载时初始化
 onMounted(() => {
@@ -1259,6 +1410,39 @@ onMounted(() => {
   color: #333;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Base64切换按钮组 */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.base64-switch {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-small {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: #e9ecef;
+  border: 1px solid #dee2e6;
+  color: #495057;
+  transition: all 0.2s;
+}
+
+.btn-small:hover {
+  background: #dee2e6;
+}
+
+.btn-small.btn-active {
+  background: #007bff;
+  border-color: #007bff;
+  color: white;
 }
 
 .divider {
@@ -1720,6 +1904,23 @@ onMounted(() => {
   color: #d4d4d4;
 }
 
+/* 暗夜模式下的btn-small */
+.json-formatter.dark-mode .btn-small {
+  background: #3c3c3c;
+  border-color: #4a4a4a;
+  color: #d4d4d4;
+}
+
+.json-formatter.dark-mode .btn-small:hover {
+  background: #4a4a4a;
+}
+
+.json-formatter.dark-mode .btn-small.btn-active {
+  background: #0d6efd;
+  border-color: #0d6efd;
+  color: white;
+}
+
 /* 暗夜模式下的悬浮球 */
 .json-formatter.dark-mode .floating-ball {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
@@ -1908,6 +2109,23 @@ onMounted(() => {
   color: #43d397;
 }
 
+/* 黑客主题下的btn-small */
+.json-formatter.hacker-mode .btn-small {
+  background: #1a252f;
+  border-color: #2c3e50;
+  color: #43d397;
+}
+
+.json-formatter.hacker-mode .btn-small:hover {
+  background: #2c3e50;
+}
+
+.json-formatter.hacker-mode .btn-small.btn-active {
+  background: #27ae60;
+  border-color: #27ae60;
+  color: #17202a;
+}
+
 .json-formatter.hacker-mode .checkbox-label {
   color: #43d397;
 }
@@ -2007,7 +2225,7 @@ onMounted(() => {
 }
 
 .json-formatter.hacker-mode :deep(.property) {
-  color: #43d397;
+  color: #4fdee5;
   font-weight: bold;
 }
 
