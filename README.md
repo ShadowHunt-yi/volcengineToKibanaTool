@@ -1,269 +1,224 @@
 # 517工具 Vue重构版
 
-这是517工具的Vue TypeScript重构版本，提供现代化的开发体验和更好的代码组织。
+基于 Vue 3 + TypeScript + Vite 构建的 Chrome 扩展，用于火山引擎控制台日志快速跳转和 JSON 格式化工具。
 
-## 🚀 特性
+## 特性
 
-- **Vue 3** + **TypeScript** + **Vite** 现代化技术栈
-- **Pinia** 状态管理
-- **Chrome扩展V3** 支持
-- **完整的类型定义** 和 **智能提示**
-- **组件化开发** 和 **响应式设计**
-- **热更新** 开发体验
+### 日志跳转
 
-## 📦 项目结构
+- **应用自动检测** - 自动识别火山引擎控制台中的当前应用（酒店_H5、机票_H5 等）
+- **索引映射** - 根据应用名称自动匹配 Kibana 索引（Hotel / JP / Middle / Train / Gateway / Nginx / CLYH 共 7 种）
+- **会话跳转** - 从会话详情页一键跳转到 Kibana 后端日志，自动提取 session_id / user_id / trackId
+- **时间范围计算** - 根据会话时间自动计算日志查询的时间区间
+- **多索引查询** - 支持同时选择多个索引进行日志查询
+
+### JSON 格式化工具
+
+- **实时格式化** - 输入即解析，支持语法错误提示
+- **深度解析** - 自动递归展开嵌套的 JSON 字符串（如接口返回的转义 JSON），支持最大 10MB
+- **三种主题** - 亮色 / 暗夜 / 黑客（绿色终端风格）主题切换
+- **URL 解码** - 一键解码 URL 编码字符串
+- **Base64 编解码** - 支持 UTF-8 中文的 Base64 编码与解码
+- **扁平化模式** - 将嵌套 JSON 结构展平为键值对形式
+- **搜索定位** - 在格式化结果中搜索字段名或值，支持上下导航
+- **节点折叠** - 可逐个或全部折叠/展开 JSON 节点
+- **面板拖拽** - 左右面板可拖动分界线调整宽度，大数据量下做了防卡顿优化
+- **悬浮球** - 工具栏可收起为悬浮球，节省屏幕空间
+- **状态持久化** - 主题、面板宽度、工具栏状态等自动保存到 localStorage
+
+## 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 框架 | Vue 3 (Composition API) |
+| 语言 | TypeScript 5.2+ |
+| 构建 | Vite 5 + vite-plugin-web-extension |
+| 状态管理 | Pinia |
+| 扩展标准 | Chrome Extension Manifest V3 |
+| 包管理 | pnpm |
+
+## 项目结构
 
 ```
-vueDir/
-├── src/
-│   ├── types/           # TypeScript类型定义
-│   ├── config/          # 配置文件
-│   ├── stores/          # Pinia状态管理
-│   ├── components/      # Vue组件
-│   ├── content/         # Content Scripts
-│   ├── background/      # Background Script
-│   ├── popup/           # 扩展弹窗
-│   ├── panel/           # DevTools面板
-│   └── manifest.json    # 扩展清单
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── README.md
+src/
+├── components/
+│   ├── IndexSelectModal.vue      # 索引选择模态框（RISON 编码、Kibana URL 生成）
+│   └── JsonFormatter.vue         # JSON 格式化工具（主体组件）
+├── content/
+│   ├── content.ts                # Content Script（Vue 驱动，DOM 监听与会话提取）
+│   └── inject.ts                 # 注入脚本（页面上下文通信）
+├── background/
+│   └── background.ts             # Service Worker（消息分发、扩展图标点击处理）
+├── devtools/
+│   ├── devtools.html             # DevTools 面板入口
+│   └── devtools.ts               # DevTools 集成
+├── pages/
+│   ├── JsonFormatter.html        # JSON 格式化工具 HTML 入口
+│   ├── JsonFormatter.ts          # Vue 应用挂载点
+│   └── JsonFormatter.vue         # 格式化页面包装组件
+├── types/
+│   └── index.ts                  # 类型定义（SessionInfo / AppInfo / FieldMapping）
+├── config.js                     # 配置文件（索引定义、Kibana URL、应用映射规则）
+└── manifest.json                 # Chrome Extension Manifest V3
 ```
 
-## 🛠️ 开发环境设置
+## 开发
 
 ### 前置要求
 
-- Node.js 16+
-- npm 或 yarn
+- Node.js >= 18
+- pnpm >= 8
 
-### 安装依赖
-
-```bash
-cd vueDir
-npm install
-```
-
-### 开发模式
+### 安装与运行
 
 ```bash
-# 启动开发服务器（热更新）
-npm run dev
+# 安装依赖
+pnpm install
+
+# 开发模式（热更新）
+pnpm dev
 
 # 构建扩展
-npm run build:extension
+pnpm build:extension
+
+# 类型检查
+pnpm type-check
 ```
 
-### 加载扩展
+### 加载到 Chrome
 
-1. 构建项目：`npm run build:extension`
-2. 打开Chrome扩展管理页面：`chrome://extensions/`
-3. 开启"开发者模式"
-4. 点击"加载已解压的扩展程序"
-5. 选择 `vueDir/dist` 目录
+1. 运行 `pnpm build:extension`
+2. 打开 `chrome://extensions/`，开启开发者模式
+3. 点击"加载已解压的扩展程序"，选择 `dist/` 目录
 
-## 🔧 核心功能
+## 配置
 
-### 1. 应用检测
-- 自动检测火山引擎控制台中的当前应用
-- 支持"酒店_H5"、"机票_H5"等应用识别
-- 实时更新应用状态
+### 索引配置
 
-### 2. 索引映射
-- 根据应用名称自动匹配对应的Kibana索引
-- 支持7种索引类型：Hotel、JP、Middle、Train、Gateway、Nginx、CLYH
-- 可配置的映射规则
-
-### 3. 会话跳转
-- 从会话详情页面一键跳转到后端日志
-- 自动提取session_id和user_id
-- 智能时间范围计算
-
-### 4. Vue组件化
-- `IndexSelectModal.vue` - 索引选择模态框
-- 响应式设计，支持多选索引
-- 优雅的错误处理和用户反馈
-
-## 📋 开发指南
-
-### 添加新索引
-
-在 `src/config.js` 中添加新的索引配置：
+在 `src/config.js` 中管理索引定义：
 
 ```javascript
 indexes: {
-  newIndex: {
-    id: "your-index-id",
-    name: "新索引",
-    description: "new-index-*"
+  hotel: {
+    id: "hotel-index-id",
+    name: "酒店",
+    description: "clyh-hotel-*"
   }
 }
 ```
 
-### 添加应用映射
+### 应用映射
 
-在 `getIndexByApplicationName` 方法中添加新的映射规则：
+通过正则匹配应用名称到索引：
 
 ```javascript
 const appNamePatterns = [
-  { pattern: /新应用|newapp/i, index: 'newIndex' }
+  { pattern: /酒店|hotel/i, index: 'hotel' },
+  { pattern: /机票|flight|jp/i, index: 'jp' },
+  { pattern: /火车|train/i, index: 'train' }
 ]
 ```
 
-### 修改UI组件
+默认使用 Middle 索引。
 
-所有Vue组件都在 `src/components/` 目录下，支持：
-- TypeScript类型检查
-- Vue 3 Composition API
-- 响应式数据绑定
-- 组件化CSS样式
+### Kibana 地址
 
-## 🔍 调试工具
+```
+https://pallognew.517la.com/s/517na/app/kibana#/discover
+```
 
-在浏览器控制台中可以使用以下调试命令：
+## 调试
+
+在火山引擎控制台页面的浏览器 DevTools Console 中可使用：
 
 ```javascript
-// 检查应用检测状态
-tool517CheckFunctions()
-
-// 完整流程测试
-tool517FullTest()
-
-// 手动刷新应用信息
-tool517RefreshApp()
+tool517CheckFunctions()   // 检查应用检测状态
+tool517FullTest()         // 完整流程测试
+tool517RefreshApp()       // 手动刷新应用信息
 ```
 
-## 🚀 部署
+## 发布
 
-### 构建生产版本
+### 自动发布（GitHub Actions）
+
+推送版本标签即可触发自动构建和发布：
 
 ```bash
-npm run build:extension
+git tag -a v2.5.1 -m "版本描述"
+git push origin v2.5.1
 ```
 
-构建产物在 `dist/` 目录中，包含：
-- `manifest.json` - 扩展清单
-- `content.js` - 内容脚本
-- `background.js` - 后台脚本
-- `inject.js` - 注入脚本
-- `config.js` - 配置文件
-- `assets/` - 资源文件
+GitHub Actions 会自动：
+1. 构建扩展
+2. 打包 `dist/` 为 ZIP
+3. 创建 GitHub Release 并上传产物
 
-### 自动发布 (GitHub Actions)
+前往 [Releases](../../releases) 页面下载最新版本。
 
-本项目配置了 GitHub Actions 自动发布工作流：
+### 手动发布
 
-1. **创建并推送标签**：
-   ```bash
-   git tag v2.4.0
-   git push origin v2.4.0
-   ```
+```bash
+pnpm build:extension
+# 将 dist/ 目录打包为 ZIP 上传到 Chrome Web Store
+```
 
-2. **自动触发构建**：
-   - GitHub Actions 自动运行构建流程
-   - 自动打包 `dist/` 目录为 ZIP 文件
-   - 自动创建 GitHub Release 并上传产物
+## 更新日志
 
-3. **下载安装**：
-   - 前往 [Releases](../../releases) 页面下载最新版本
-   - 解压后在 Chrome 中加载扩展
+### v2.5.1
+- 修复大型嵌套 JSON 解析失败（将嵌套字符串长度限制从 1MB 提升至 10MB）
+- 修复粘贴内容后不自动触发解析的问题
+- 优化拖动分界线在大数据量下的卡顿（requestAnimationFrame 节流 + CSS contain 隔离重排）
 
-### Chrome Web Store发布
+### v2.5.0
+- 新增 Base64 编解码功能，支持 UTF-8 中文
+- 黑客主题属性名颜色调整为青色（#4fdee5）
+- URL 解码、Base64、扁平化模式自动互斥切换
 
-1. 将 `dist/` 目录打包为 `.zip` 文件
-2. 在Chrome Web Store开发者控制台上传
-3. 填写扩展信息和描述
-4. 提交审核
-
-## 🔄 从旧版本迁移
-
-本Vue版本完全重构，采用现代化Vue组件架构：
-
-- ✅ **Vue组件化**: 完全摒弃手写DOM，使用Vue组件
-- ✅ **TypeScript类型安全**: 全面的类型定义和检查
-- ✅ **Pinia状态管理**: 响应式状态管理和数据流
-- ✅ **组件化UI**: 模态框、状态指示器等全部Vue组件化
-- ✅ **增强的用户体验**: 动画过渡、加载状态、错误处理
-- ✅ **现代化架构**: 完全脱离jQuery思维，拥抱现代前端开发
-
-### 重构亮点
-
-1. **完全组件化**: 
-   - `IndexSelectModal.vue` - 索引选择模态框
-   - `AppStatusIndicator.vue` - 应用状态指示器
-   - `PopupApp.vue` - 扩展弹窗
-
-2. **Vue化的Content Script**:
-   - 不再手写DOM字符串
-   - 使用Vue组件管理UI状态
-   - 响应式数据绑定
-
-3. **现代化工具链**:
-   - Vite构建工具
-   - Vue 3 Composition API
-   - TypeScript类型检查
-   - 热更新开发体验
-
-## 📝 更新日志
-
-### v2.5.0 (工具增强版)
-- 🔐 **Base64编解码**: 新增Base64编码/解码功能，支持UTF-8中文
-- 🎨 **黑客主题优化**: 属性名颜色调整为青色(#4fdee5)，视觉更舒适
-- 🔄 **模式互斥**: URL解码、Base64、扁平化模式自动互斥切换
-
-### v2.4.0 (UI增强版)
-- 🎨 **悬浮球工具栏**: 工具栏支持收起为悬浮球，节省屏幕空间
-- 🖤 **黑客主题**: 新增黑客风格主题（深色背景 + 绿色文字）
-- 🎭 **三主题切换**: 亮色/暗夜/黑客 三种主题循环切换
-- 🔧 **布局优化**: 修复JSON解析后页面高度溢出问题
-- 💾 **状态持久化**: 工具栏折叠状态和主题设置自动保存
+### v2.4.0
+- 悬浮球工具栏（可收起/展开）
+- 新增黑客主题（深色背景 + 绿色文字）
+- 三主题循环切换（亮色 / 暗夜 / 黑客）
+- 修复 JSON 解析后页面高度溢出问题
+- 工具栏折叠状态和主题设置持久化
 
 ### v2.3.2
-- 🚀 修复大数据JSON解析卡顿问题
+- 修复大数据 JSON 解析卡顿问题
 
 ### v2.3.1
-- 🔧 修复问题
+- Bug 修复
 
 ### v2.3.0
-- ⏱️ 增加跳转网关耗时统计
+- 增加跳转网关耗时统计
 
 ### v2.2.1
-- 🔍 TrackId筛选功能
+- TrackId 筛选功能
 
 ### v2.2.0
-- 📋 增加HTTP请求中提取TrackId
+- 增加 HTTP 请求中提取 TrackId
 
 ### v2.1.1
-- 🔧 修复gateway筛选字段
+- 修复 gateway 筛选字段
 
 ### v2.1.0
-- 🔧 修复DOM变化问题，精简打印信息
+- 修复 DOM 变化问题，精简打印信息
 
-### v2.0.0 (Vue重构版)
-- 🎉 完全使用Vue 3 + TypeScript重构
-- 🔧 引入Pinia状态管理
-- 🎨 组件化UI设计
-- 🚀 Vite构建工具
-- 💪 完整的类型定义
-- 🔍 增强的调试功能
+### v2.0.0
+- 完全使用 Vue 3 + TypeScript 重构
+- 引入 Pinia 状态管理
+- 组件化 UI 设计
+- Vite 构建工具
 
-### v1.x (原版本)
-- 基础的应用检测和索引跳转功能
-- JavaScript实现
+### v1.x
+- 基础的应用检测和索引跳转功能（原生 JavaScript）
 
-## 🤝 贡献指南
+## 贡献
 
 1. Fork 项目
-2. 创建特性分支：`git checkout -b feature/new-feature`
-3. 提交更改：`git commit -am 'Add new feature'`
-4. 推送分支：`git push origin feature/new-feature`
+2. 创建分支：`git checkout -b feature/xxx`
+3. 提交更改：`git commit -am 'feat: 描述'`
+4. 推送：`git push origin feature/xxx`
 5. 提交 Pull Request
 
-## 📄 许可证
+## 许可证
 
 MIT License
-
-## 🙋‍♂️ 支持
-
-如有问题或建议，请在项目中提交Issue。 

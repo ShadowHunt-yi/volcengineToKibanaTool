@@ -1143,38 +1143,61 @@ function startResize(event: MouseEvent) {
   isResizing.value = true
   event.preventDefault()
   event.stopPropagation()
-  
+
   const startX = event.clientX
   const startWidth = leftPanelWidth.value
-  
+  let rafId = 0
+  let pendingWidth = startWidth
+
   // 禁用文本选择
   document.body.style.userSelect = 'none'
   document.body.style.cursor = 'col-resize'
-  
+
+  // 拖动期间给面板加优化class，阻止布局传播
+  document.querySelector('.main-content')?.classList.add('resizing')
+
   function doResize(e: MouseEvent) {
     if (!isResizing.value) return
     e.preventDefault()
-    
+
     const deltaX = e.clientX - startX
     const minWidth = 200 // 最小宽度
     const maxWidth = window.innerWidth - 300 // 留出空间给右侧
-    const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + deltaX))
-    leftPanelWidth.value = newWidth
+    pendingWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + deltaX))
+
+    // 用 requestAnimationFrame 节流，避免每次 mousemove 都触发重排
+    if (!rafId) {
+      rafId = requestAnimationFrame(() => {
+        leftPanelWidth.value = pendingWidth
+        rafId = 0
+      })
+    }
   }
-  
+
   function stopResize() {
     isResizing.value = false
-    
+
+    // 取消未执行的 raf
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+    // 确保最终宽度被应用
+    leftPanelWidth.value = pendingWidth
+
     // 恢复文本选择和光标
     document.body.style.userSelect = ''
     document.body.style.cursor = ''
-    
+
+    // 移除优化class
+    document.querySelector('.main-content')?.classList.remove('resizing')
+
     document.removeEventListener('mousemove', doResize)
     document.removeEventListener('mouseup', stopResize)
     // 保存到localStorage
     localStorage.setItem('jsonFormatter-panelWidth', leftPanelWidth.value.toString())
   }
-  
+
   document.addEventListener('mousemove', doResize)
   document.addEventListener('mouseup', stopResize)
 }
@@ -2268,6 +2291,22 @@ onMounted(() => {
 
 .json-formatter.hacker-mode .floating-ball:hover {
   box-shadow: 0 6px 20px rgba(46, 204, 113, 0.6);
+}
+
+/* 拖动分界线期间的性能优化 - 阻止面板内容参与重排 */
+.main-content.resizing .output-panel {
+  contain: strict;
+  pointer-events: none;
+}
+
+.main-content.resizing .input-panel {
+  will-change: width;
+  pointer-events: none;
+}
+
+.main-content.resizing .json-output {
+  contain: strict;
+  overflow: hidden;
 }
 
 @media (max-width: 768px) {
