@@ -1138,7 +1138,7 @@ function toggleFlattenMode() {
   }
 }
 
-// 开始拖拽调整
+// 开始拖拽调整 - 只在松开时应用宽度，拖动过程中只显示指示线
 function startResize(event: MouseEvent) {
   isResizing.value = true
   event.preventDefault()
@@ -1146,14 +1146,16 @@ function startResize(event: MouseEvent) {
 
   const startX = event.clientX
   const startWidth = leftPanelWidth.value
-  let rafId = 0
-  let pendingWidth = startWidth
+  let currentDeltaX = 0
+
+  // 获取分界线元素
+  const divider = event.currentTarget as HTMLElement
 
   // 禁用文本选择
   document.body.style.userSelect = 'none'
   document.body.style.cursor = 'col-resize'
 
-  // 拖动期间给面板加优化class，阻止布局传播
+  // 拖动期间给面板加优化class
   document.querySelector('.main-content')?.classList.add('resizing')
 
   function doResize(e: MouseEvent) {
@@ -1161,29 +1163,24 @@ function startResize(event: MouseEvent) {
     e.preventDefault()
 
     const deltaX = e.clientX - startX
-    const minWidth = 200 // 最小宽度
-    const maxWidth = window.innerWidth - 300 // 留出空间给右侧
-    pendingWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + deltaX))
+    const minWidth = 200
+    const maxWidth = window.innerWidth - 300
+    const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + deltaX))
+    currentDeltaX = newWidth - startWidth
 
-    // 用 requestAnimationFrame 节流，避免每次 mousemove 都触发重排
-    if (!rafId) {
-      rafId = requestAnimationFrame(() => {
-        leftPanelWidth.value = pendingWidth
-        rafId = 0
-      })
-    }
+    // 只移动分界线位置作为视觉反馈，不触发 Vue 响应式更新
+    divider.style.transform = `translateX(${currentDeltaX}px)`
   }
 
   function stopResize() {
     isResizing.value = false
 
-    // 取消未执行的 raf
-    if (rafId) {
-      cancelAnimationFrame(rafId)
-      rafId = 0
-    }
-    // 确保最终宽度被应用
-    leftPanelWidth.value = pendingWidth
+    // 重置分界线的 transform
+    divider.style.transform = ''
+
+    // 计算最终宽度并一次性应用
+    const finalWidth = Math.max(200, Math.min(window.innerWidth - 300, startWidth + currentDeltaX))
+    leftPanelWidth.value = finalWidth
 
     // 恢复文本选择和光标
     document.body.style.userSelect = ''
@@ -1194,8 +1191,9 @@ function startResize(event: MouseEvent) {
 
     document.removeEventListener('mousemove', doResize)
     document.removeEventListener('mouseup', stopResize)
+
     // 保存到localStorage
-    localStorage.setItem('jsonFormatter-panelWidth', leftPanelWidth.value.toString())
+    localStorage.setItem('jsonFormatter-panelWidth', finalWidth.toString())
   }
 
   document.addEventListener('mousemove', doResize)
@@ -2293,20 +2291,20 @@ onMounted(() => {
   box-shadow: 0 6px 20px rgba(46, 204, 113, 0.6);
 }
 
-/* 拖动分界线期间的性能优化 - 阻止面板内容参与重排 */
-.main-content.resizing .output-panel {
-  contain: strict;
-  pointer-events: none;
+/* 拖动分界线期间的性能优化 */
+.main-content.resizing {
+  cursor: col-resize;
 }
 
+.main-content.resizing .output-panel,
 .main-content.resizing .input-panel {
-  will-change: width;
   pointer-events: none;
 }
 
-.main-content.resizing .json-output {
-  contain: strict;
-  overflow: hidden;
+/* 拖动时分界线样式 */
+.main-content.resizing .divider.resizable {
+  background: rgba(0, 123, 255, 0.3);
+  z-index: 100;
 }
 
 @media (max-width: 768px) {
