@@ -336,7 +336,7 @@ function isJsonString(str: string): boolean {
   // 必须以 { 或 [ 开头
   if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false
   // 简单长度检查,避免解析过长的非JSON字符串
-  if (trimmed.length > 1000000) return false // 1MB限制
+  if (trimmed.length > 10000000) return false // 10MB限制
   return true
 }
 
@@ -1064,6 +1064,7 @@ async function pasteFromClipboard() {
     const text = await navigator.clipboard.readText()
     inputJson.value = text
     await nextTick()
+    onInputChange()
   } catch (e) {
     console.error('粘贴失败:', e)
   }
